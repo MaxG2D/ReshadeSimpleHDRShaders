@@ -2,7 +2,7 @@
 
 ## [Download]()
 
-There's a lot of cool shaders that focus on the getting most basic HDR display adjustments and fixes right, most noteably [Lillium's] (https://github.com/EndlesslyFlowering/ReShade_HDR_shaders) and [Pumbo's] (https://github.com/Filoppi/PumboAutoHDR), which are absolutely essential shaders. This is a very high quality stuff with a lot of various math involved to get the most proper HDR experience.
+There's a lot of cool shaders that focus on the getting most basic HDR display adjustments and fixes right, most noteably [Lillium's](https://github.com/EndlesslyFlowering/ReShade_HDR_shaders) and [Pumbo's](https://github.com/Filoppi/PumboAutoHDR), which are absolutely essential shaders. This is a very high quality stuff with a lot of various math involved to get the most proper HDR experience.
 
 This repo tries something else. It's 2 main focus points are:
 - Finally have a proper HDR support in ReShade for cinematic effects like motion blur, bloom, vignetting, lens flares, etc.
