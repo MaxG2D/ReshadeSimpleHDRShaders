@@ -33,6 +33,7 @@ uniform float frametime < source = "frametime"; >;
 uniform int README
 <
 	ui_category = "Read me";
+	ui_category_closed = true;
 	ui_label    = " ";
 	ui_type     = "radio";
 	ui_text     =

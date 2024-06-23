@@ -1,5 +1,5 @@
 //	All credits go to respective authors like:
-//	Lillium
+//	Lilium
 //	Pumbo
 //	All the people that worked on defining the standards	
 //	Tweaks and edits by MaxG3D	
@@ -10,7 +10,7 @@
 #pragma warning(disable : 3571) // disable warning about potentially using pow on a negative value
 
 /////////////////////////////////////////////
-//MISC
+//DEFINITIONS
 /////////////////////////////////////////////
 
 // These are from the "color_space" enum in ReShade
@@ -51,7 +51,7 @@
 #define FLT16_MAX 65504.f
 
 /////////////////////////////////////////////
-//STATIC DEFINITIONS
+//STATIC CONST
 /////////////////////////////////////////////
 
 static const float sRGB_max_nits = 80.f;
@@ -71,6 +71,47 @@ static const float3 BT2020_PrimaryRed = float3(0.6300, 0.3400, 0.0300);
 static const float3 BT2020_PrimaryGreen = float3(0.3300, 0.6000, 0.0800);
 static const float3 BT2020_PrimaryBlue = float3(0.1500, 0.0600, 1.0000);
 static const float3 BT2020_WhitePoint = float3(0.3127, 0.3290, 0.3583);
+
+/////////////////////////////////////////////
+//MISC - FUNCTIONS
+/////////////////////////////////////////////
+
+float luminance(float3 color, float3 lumCoeff)
+{
+    return dot(color, lumCoeff);
+}
+
+/**
+ * Returns the current resolution.
+ */
+float2 GetResolution()
+{
+	return float2(BUFFER_WIDTH, BUFFER_HEIGHT);
+}
+
+/**
+ * Returns the current pixel size/reciprocal resolution.
+ */
+float2 GetPixelSize()
+{
+	return float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT);
+}
+
+/**
+ * Returns the aspect ratio of the current resolution.
+ */
+float GetAspectRatio()
+{
+	return BUFFER_WIDTH * BUFFER_RCP_HEIGHT;
+}
+
+/**
+ * Returns the current resolution and pixel size in a float4.
+ */
+float4 GetScreenParams()
+{
+	return float4(GetResolution(), GetPixelSize());
+}
 
 /////////////////////////////////////////////
 //CONVERSIONS - LUMA
