@@ -17,7 +17,7 @@ This is something that I've been experimenting a lot before I even had a HDR cap
 
 I love Pumbo's AdvancedAutoHDR shader with it's saturation adjustments, but I want something that is more flexible, and something that will actually prevent color from going into invalid space.
 
-## - Credits
+# Credits
 
 Pumbo, Lillium, Jakob Wapenhensch
 
