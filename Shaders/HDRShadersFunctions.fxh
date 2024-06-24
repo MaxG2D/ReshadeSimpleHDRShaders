@@ -1,9 +1,10 @@
-//	All credits go to respective authors like:
-//	Lilium
-//	Pumbo
-//	All the people that worked on defining the standards	
-//	Tweaks and edits by MaxG3D	
-//	Special thanks to SpecialK, and HDR Den server
+/**	All credits go to respective authors like:
+*	Lilium
+*	Pumbo
+*	All the people that worked on defining the standards	
+*	Tweaks and edits by MaxG3D	
+*	Special thanks to SpecialK, and HDR Den server
+**/
 
 #pragma once
 
@@ -73,6 +74,62 @@ static const float3 BT2020_PrimaryBlue = float3(0.1500, 0.0600, 1.0000);
 static const float3 BT2020_WhitePoint = float3(0.3127, 0.3290, 0.3583);
 
 /////////////////////////////////////////////
+//STATIC CONST - GAUSSIAN KERNELS
+/////////////////////////////////////////////
+
+static const float Weights5[5] = 
+{
+  0.0613595978134402,
+  0.24477019552960988,
+  0.38774041331389975,
+  0.24477019552960988,
+  0.0613595978134402
+};
+
+static const float Weights7[7] = 
+{
+  0.005979789403041253,
+  0.060625762867880836,
+  0.2418428470867933,
+  0.38310320128456915,
+  0.2418428470867933,
+  0.060625762867880836,
+  0.005979789403041253
+};
+
+static const float Weights11[11] = 
+{
+  0.000003381766950162007f,
+  0.0002292725895775324f,
+  0.005977006954929783f,
+  0.0605975531721828f,
+  0.24173031550285376f,
+  0.38292494002701216f,
+  0.24173031550285376f,
+  0.0605975531721828f,
+  0.005977006954929783f,
+  0.0002292725895775324f,
+  0.000003381766950162007f
+};
+
+static const float Weights13[13] = 
+{
+  0.000002260003935204924f,
+  0.00008615416577823069f,
+  0.0016805913296610252f,
+  0.016841326223814207f,
+  0.08703948648194361f,
+  0.23281133341733654f,
+  0.3230776967550624f,
+  0.23281133341733654f,
+  0.08703948648194361f,
+  0.016841326223814207f,
+  0.0016805913296610252f,
+  0.00008615416577823069f,
+  0.000002260003935204924f
+};
+
+/////////////////////////////////////////////
 //MISC - FUNCTIONS
 /////////////////////////////////////////////
 
@@ -81,36 +138,85 @@ float luminance(float3 color, float3 lumCoeff)
     return dot(color, lumCoeff);
 }
 
-/**
- * Returns the current resolution.
- */
 float2 GetResolution()
 {
 	return float2(BUFFER_WIDTH, BUFFER_HEIGHT);
 }
 
-/**
- * Returns the current pixel size/reciprocal resolution.
- */
 float2 GetPixelSize()
 {
 	return float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT);
 }
 
-/**
- * Returns the aspect ratio of the current resolution.
- */
 float GetAspectRatio()
 {
 	return BUFFER_WIDTH * BUFFER_RCP_HEIGHT;
 }
 
-/**
- * Returns the current resolution and pixel size in a float4.
- */
 float4 GetScreenParams()
 {
 	return float4(GetResolution(), GetPixelSize());
+}
+
+float3 BasicSaturation(float3 color, float amount)
+{
+    float luminanceHDR = luminance(color, lumCoeffHDR);
+    return lerp(luminanceHDR, color, amount);
+}
+
+float3 ExtendedSaturation(float3 color, float amount)
+{
+    float gray = luminance(color, lumCoeffHDR);
+    float3 delta = color - gray;
+    float maxDelta = max(max(delta.r, delta.g), delta.b);
+    float3 deltaSaturated = delta;
+    if (maxDelta > 0.001)
+    {
+        float3 scaleFactor = maxDelta / max(maxDelta, 0.001); // Ensure no division by zero
+        deltaSaturated = delta + scaleFactor * (deltaSaturated - delta);
+    }
+    float3 result = gray + deltaSaturated * amount;
+
+    return result;
+}
+
+/////////////////////////////////////////////
+//MISC - BLURS
+/////////////////////////////////////////////
+
+float4 BoxBlur(sampler s, float2 uv, float blurSize, int DownsampleAmount)
+{
+    float4 color = float4(0.0, 0.0, 0.0, 0.0);
+    int samples = 3; // Number of samples in each direction (total samples will be (2*samples + 1)^2)
+
+    for (int x = -samples; x <= samples; ++x)
+    {
+        for (int y = -samples; y <= samples; ++y)
+        {
+            float2 offset = float2(x, y) * GetPixelSize() * DownsampleAmount * blurSize;
+            color += tex2D(s, uv + offset);
+        }
+    }
+
+    // Average the accumulated color
+    float sampleCount = (2 * samples + 1) * (2 * samples + 1);
+    return color / sampleCount;
+}
+
+float4 CircularBlur(sampler s, float2 uv, float blurSize, int sampleCount, int DownsampleAmount)
+{
+    float4 color = float4(0.0, 0.0, 0.0, 0.0);
+    float radius = blurSize;
+    float sampleAngle = 2.0 * 3.14159265359 / sampleCount; // Divide circle into equal segments
+
+    for (int i = 0; i < sampleCount; ++i)
+    {
+        float angle = sampleAngle * i;
+        float2 offset = float2(cos(angle), sin(angle)) * radius * GetPixelSize() * DownsampleAmount;
+        color += tex2D(s, uv + offset);
+    }
+
+    return color / sampleCount;
 }
 
 /////////////////////////////////////////////

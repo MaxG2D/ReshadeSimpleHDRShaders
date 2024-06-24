@@ -3,27 +3,34 @@
  - Inspired largly by Luluco250's MagicHDR [https://github.com/luluco250/FXShaders]
  - By MaxG3D
  **/
-
+ 
 // Includes
 #include "ReShadeUI.fxh"
 #include "ReShade.fxh"
 #include "HDRShadersFunctions.fxh"
 
-#ifndef REMOVE_SDR
-#define REMOVE_SDR 1
+#ifndef REMOVE_SDR_VALUES
+#define REMOVE_SDR_VALUES 1
+#endif
+
+#ifndef ADDITIONAL_BLUR_PASS
+#define ADDITIONAL_BLUR_PASS 1
 #endif
 
 #ifndef DOWNSAMPLE
 #define DOWNSAMPLE 2
+#endif
+
+#ifndef LINEAR_CONVERSION
+#define LINEAR_CONVERSION 0
+#endif
+
+#if DOWNSAMPLE < 1
+	#error "Downsample cannot be less than 1x"
 #endif  
 
 namespace HDRShaders
 {
-
-// Kernel weights for different blur sizes
-static const float Weights5[5] = {0.06136, 0.24477, 0.38774, 0.24477, 0.06136};
-static const float Weights7[7] = {0.071303, 0.131514, 0.189879, 0.214607, 0.189879, 0.131514, 0.071303};
-static const float Weights11[11] = {0.062496, 0.076065, 0.091321, 0.107807, 0.124101, 0.138889, 0.150959, 0.159208, 0.163746, 0.164606, 0.161891};
 
 static const int 
 	Additive = 0,
@@ -64,6 +71,29 @@ uniform float BloomBrightness
     ui_max = 10.0;
 > = 1.0;
 
+uniform float BloomSaturation
+<
+	ui_category = "Bloom";
+	ui_label = "Saturation";
+	ui_tooltip =
+		"Determines the saturation of bloom.\n"
+		"\nDefault: 1.0";
+	ui_type = "slider";
+	ui_min = 0.0;
+	ui_max = 2.0;
+> = 1.0;
+
+uniform int SampleCount
+<
+    ui_category = "Bloom - Advanced";
+    ui_label = "Sampling Quality";
+    ui_tooltip = "Specify the number of samples for Gaussian blur."
+	"\n" "\n" "Medium - 5, High - 7, VeryHigh - 11, Overkill - 13\n"
+	"\n" "\n" "Default: Medium";
+    ui_type = "combo";
+    ui_items = "Medium\0High\0Ultra\0Overkill\0";
+> = 0;
+
 uniform float BloomBlurSize
 <
     ui_category = "Bloom - Advanced";
@@ -71,25 +101,27 @@ uniform float BloomBlurSize
     ui_label = "Blur Size";
     ui_tooltip =
         "How much gaussian blur is applied for each bloom texture pass"
-        "\n" "\n" "Default: 1.5";
+        "\n" "\n" "Default: 0.75";
     ui_type = "slider";
     ui_min = 0.1;
     ui_max = 2.0;
-> = 1.5;
+> = 0.75;
 
+#if ADDITIONAL_BLUR_PASS
 uniform float BloomSecondBlurSize
 <
     ui_category = "Bloom - Advanced";
     ui_category_closed = true;
-    ui_label = "Second Blur Size";
+    ui_label = "Additional Blur Size";
     ui_tooltip =
         "The size of the gaussian blur applied to bloom texture right before it's mixed with input"
         "\n" "Used to mitigate undersampling artifacts"        
-        "\n" "\n" "Default: 1.5";
+        "\n" "\n" "Default: 1.6";
     ui_type = "slider";
     ui_min = 0.0;
     ui_max = 2.0;
-> = 1.25;
+> = 1.65;
+#endif
 
 uniform int BlendingType
 <
@@ -97,10 +129,10 @@ uniform int BlendingType
 	ui_label = "Blending Type";
 	ui_tooltip =
 		"Methods of blending bloom with image.\n"
-		"\nDefault: Additive";
+		"\nDefault: Overlay";
 	ui_type = "combo";
 	ui_items = "Additive\0Overlay\0";
-> = Additive;
+> = Overlay;
 
 uniform bool ShowBloom
 <
@@ -121,8 +153,8 @@ sampler Color
 
 texture BloomCombinedTex
 {
-		Width = BUFFER_WIDTH / 2; 
-		Height = BUFFER_HEIGHT / 2; 
+		Width = BUFFER_WIDTH / DownsampleAmount.x; 
+		Height = BUFFER_HEIGHT / DownsampleAmount.y; 
 		Format = RGBA16F; 
 		MipLevels = 1; 
 };
@@ -147,8 +179,6 @@ sampler BloomCombined
 	sampler TexName \
 	{ \
 	    Texture = TexName##Mip; \
-	    MinFilter = LINEAR; \
-	    MagFilter = LINEAR; \
 	    AddressU = Border; \
 	    AddressV = Border; \
 	}
@@ -173,8 +203,12 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
         color.rgb = PQ_to_linear(color.rgb);
         color.rgb = BT2020_2_BT709(color.rgb);
     }
+
+	#if LINEAR_CONVERSION
+		color.rgb = sRGB_to_linear(color.rgb);			
+	#endif
     
-	#if REMOVE_SDR
+	#if REMOVE_SDR_VALUES
 		// HDR Thresholding (ignoring 0.0-1.0 range)
 		if (luminance(color.rgb, lumCoeffHDR) < 1.f)
 		{
@@ -184,41 +218,94 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	
 	// Bloom Brightness
 	color *= BloomBrightness;
+
+	// Bloom Saturation
+	color.rgb = BasicSaturation(color.rgb, BloomSaturation);
     
     return color;
 }
 
-// Gaussian blur function
-float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, const float weights[5], int kernelSize)
+float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int kernelSize)
 {
+	float3 weights[13];	
+	if (SampleCount == 0)
+		{
+			kernelSize = 5;
+		}
+	else if (SampleCount == 1)
+		{
+			kernelSize = 7;
+		}
+	else if (SampleCount == 2)
+		{
+			kernelSize = 11;
+		}
+	else if (SampleCount == 3)
+		{
+			kernelSize = 13;
+		}
+		
+    switch (kernelSize)
+    {
+        case 5:
+            for (int i = 0; i < kernelSize; ++i)
+                weights[i] = Weights5[i];
+            break;
+        case 7:
+            for (int i = 0; i < kernelSize; ++i)
+                weights[i] = Weights7[i];
+            break;
+        case 11:
+            for (int i = 0; i < kernelSize; ++i)
+                weights[i] = Weights11[i];
+            break;
+		case 13:
+			for (int i = 0; i < kernelSize; ++i)
+			    weights[i] = Weights13[i];
+			break;
+        default:
+            kernelSize = 5; // Default to 5 if SampleCount is out of expected range
+            for (int i = 0; i < kernelSize; ++i)
+                weights[i] = Weights5[i];
+            break;
+    }
+
     float4 color = 0.0;
+    static const float halfSamples = (kernelSize - 1) * 0.5;
+
+    // Iterate through kernel samples
     for (int i = 0; i < kernelSize; ++i)
     {
-        float2 offset = direction * (i - (kernelSize - 1) * 0.5) * blurSize;
-        color += tex2D(s, uv - offset * GetPixelSize() * DownsampleAmount).rgba * weights[i];
+        // Calculate offset
+        float2 offset = direction * GetPixelSize() * DownsampleAmount * sqrt(kernelSize) * blurSize * (i - halfSamples);
+
+        // Accumulate blurred color
+        color += tex2D(s, uv - offset).rgba * weights[i];
     }
+
     return color;
 }
 
 #define DEFINE_BLUR_FUNCTIONS(H, V, input, Scale) \
     float4 HorizontalBlur##H##PS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target \
     { \
-        return GaussianBlur(input, texcoord, float2(Scale, 0.0), BloomBlurSize, Weights5, 5); \
+        return GaussianBlur(input, texcoord, float2(Scale, 0.0), BloomBlurSize, SampleCount); \
     } \
     float4 VerticalBlur##V##PS(float4 pixel : SV_POSITION,float2 texcoord : TEXCOORD0) : SV_Target \
     { \
-        return GaussianBlur(Intermediate, texcoord, float2(0.0, Scale), BloomBlurSize, Weights5, 5); \
+        return GaussianBlur(Intermediate, texcoord, float2(0.0, Scale), BloomBlurSize, SampleCount); \
     }
 
 	// Define blur functions for each mip level
-	DEFINE_BLUR_FUNCTIONS(0, 1, Bloom0, 0);
+	DEFINE_BLUR_FUNCTIONS(0, 1, Bloom0, 0.5);
 	DEFINE_BLUR_FUNCTIONS(2, 3, Bloom0, 2);
 	DEFINE_BLUR_FUNCTIONS(4, 5, Bloom1, 4);
 	DEFINE_BLUR_FUNCTIONS(6, 7, Bloom2, 8);
 	DEFINE_BLUR_FUNCTIONS(8, 9, Bloom3, 16);
 	DEFINE_BLUR_FUNCTIONS(10, 11, Bloom4, 32);
+	DEFINE_BLUR_FUNCTIONS(12, 13, Bloom5, 64)
 
-// Second blur pass for artifact smoothing
+// Merging all bloom textures so far into a single texture
 float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
 	float4 MergedBloom = 0.0;
@@ -237,13 +324,21 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 
 float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
-	float4 finalcolor = tex2D(Color, texcoord);
+    float4 finalcolor = tex2D(Color, texcoord);
     float4 bloom = tex2D(BloomCombined, texcoord);
-
-	// Additional Blur
-    bloom = GaussianBlur(BloomCombined, texcoord, float2(1, 0.0), BloomSecondBlurSize, Weights5, 5);
-    bloom.rgb += GaussianBlur(BloomCombined, texcoord, float2(0.0, 1), BloomSecondBlurSize, Weights5, 5).rgb; 
-	bloom /= 2;
+	
+	#if ADDITIONAL_BLUR_PASS
+	    // Apply dual-pass Gaussian blur
+	    bloom = CircularBlur(BloomCombined, texcoord, BloomSecondBlurSize, 12, DownsampleAmount);
+	    bloom /= 3.0;
+    #endif
+	
+	uint inColorSpace = IN_COLOR_SPACE;
+    if (inColorSpace == 2) // HDR10 BT.2020 PQ
+    {
+        bloom.rgb = BT709_2_BT2020(bloom.rgb);
+        bloom.rgb = linear_to_PQ(bloom.rgb);
+    }
    
 	if (BlendingType == Overlay)	
 	{

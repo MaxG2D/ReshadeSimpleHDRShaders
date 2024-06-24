@@ -8,9 +8,23 @@
 #include "ReShade.fxh"
 #include "HDRShadersFunctions.fxh"
 
+static const int 
+	Basic = 0,
+	Extended = 1;
+
+uniform int saturation_method
+<
+	ui_label = "Sat method";
+	ui_tooltip =
+		"Either use basic lerp saturation, or more advance saturation that aims to keep hues in check"
+		"\n""\n" "Default: Basic";
+	ui_type = "combo";
+	ui_items = "Basic\0Extended\0";
+> = Basic;
+
 uniform float amount < 
     ui_min = -1.0; ui_max = 5.0;
-    ui_category = "Saturation";
+	ui_label = "Sat amount";
     ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
     ui_step = 0.01;
 	ui_type = "slider";
@@ -18,7 +32,7 @@ uniform float amount <
 
 uniform float limit_to_highlight < 
     ui_min = 0.0; ui_max = 1.0;
-    ui_category = "Saturation";
+    ui_label = "Sat global>highlight";
     ui_tooltip = "Switch between global or highlight only saturation";
     ui_step = 0.01;
 	ui_type = "slider";
@@ -26,16 +40,11 @@ uniform float limit_to_highlight <
 
 uniform float gamut_expansion < 
     ui_min = 0.0; ui_max = 5.0;
-    ui_category = "Saturation";
+    ui_label = "Sat gamut expansion";
     ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
     ui_step = 0.01;
 	ui_type = "slider";
 > = 0.5;
-
-float luminanceHDR(float3 vColor)
-{
-    return dot(vColor, lumCoeffHDR);
-}
 
 float rangeCompressPow(float x, float fPow)
 {
@@ -46,12 +55,6 @@ float lumaCompress(float val, float fMaxValue, float fShoulderStart, float fPow)
 {
     float v2 = fShoulderStart + (fMaxValue - fShoulderStart) * rangeCompressPow((val - fShoulderStart) / (fMaxValue - fShoulderStart), fPow);
     return val <= fShoulderStart ? val : v2;
-}
-
-float3 saturation(float3 color, float saturation)
-{
-    float luminanceHDR = luminanceHDR(color);
-    return lerp(luminanceHDR, color, saturation);
 }
 
 float3 expandGamut(float3 vHDRColor, float fExpandGamut)
@@ -84,7 +87,7 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 tex : TEXCOORD) : 
 {
     float3 c0 = tex2D(ReShade::BackBuffer, tex).rgb;
     c0 = clamp(c0, -FLT16_MAX, FLT16_MAX);
-    if (luminanceHDR(c0) < 0.f)
+    if (luminance(c0, lumCoeffHDR) < 0.f)
 	{   
 	    c0 = 0.f;
 	}   
@@ -93,7 +96,7 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 tex : TEXCOORD) : 
     c0 += extraColor;     
         
     float3 c1 = c0;
-	float HDRLuminance = luminanceHDR(c1); 
+	float HDRLuminance = luminance(c1, lumCoeffHDR); 
 
 	if (amount > 0.0)
     {
@@ -101,7 +104,15 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 tex : TEXCOORD) : 
         const float highlightSaturationRatio = (OklabLightness + (1.f / 48.f)) / (48.f / 1.f);
         const float midSaturationRatio = OklabLightness;
         float ratio_blend = lerp(midSaturationRatio, highlightSaturationRatio, limit_to_highlight);
-        c1 = saturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        
+		if (saturation_method == Basic)	
+		{
+        	c1 = BasicSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+		}
+		else if (saturation_method == Extended)
+		{
+        	c1 = ExtendedSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+		}
     }
 
     if (amount < 0.0)
