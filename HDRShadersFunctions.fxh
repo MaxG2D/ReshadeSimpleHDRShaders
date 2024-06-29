@@ -1,8 +1,10 @@
 /**	All credits go to respective authors like:
 *	Lilium
 *	Pumbo
-*	All the people that worked on defining the standards	
+*	All the people that worked on defining the standards
+*
 *	Tweaks and edits by MaxG3D	
+*
 *	Special thanks to SpecialK, and HDR Den server
 **/
 
@@ -130,140 +132,41 @@ static const float Weights13[13] =
 };
 
 /////////////////////////////////////////////
-//MISC - FUNCTIONS
+//NAN-INF FIX
 /////////////////////////////////////////////
 
-float luminance(float3 color, float3 lumCoeff)
+bool IsNAN(const float input)
 {
-    return dot(color, lumCoeff);
+    if (isnan(input) || isinf(input))
+        return true;
+    else
+        return false;
 }
 
-float2 GetResolution()
+float fixNAN(const float input)
 {
-	return float2(BUFFER_WIDTH, BUFFER_HEIGHT);
+    if (IsNAN(input))
+        return 0.f;
+    else
+        return input;
 }
 
-float2 GetPixelSize()
+float3 fixNAN(float3 input)
 {
-	return float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT);
+    if (IsNAN(input.r))
+        input.r = 0.f;
+    else if (IsNAN(input.g))
+        input.g = 0.f;
+    else if (IsNAN(input.b))
+        input.b = 0.f;
+  
+    return input;
 }
 
-float GetAspectRatio()
+float SafeDivide(float a, float b)
 {
-	return BUFFER_WIDTH * BUFFER_RCP_HEIGHT;
+    return (b != 0.0f) ? a / b : 0.0f;
 }
-
-float4 GetScreenParams()
-{
-	return float4(GetResolution(), GetPixelSize());
-}
-
-float3 BasicSaturation(float3 color, float amount)
-{
-    float luminanceHDR = luminance(color, lumCoeffHDR);
-    return lerp(luminanceHDR, color, amount);
-}
-
-float3 ExtendedSaturation(float3 color, float amount)
-{
-    float gray = luminance(color, lumCoeffHDR);
-    float3 delta = color - gray;
-    float maxDelta = max(max(delta.r, delta.g), delta.b);
-    float3 deltaSaturated = delta;
-    if (maxDelta > 0.001)
-    {
-        float3 scaleFactor = maxDelta / max(maxDelta, 0.001); // Ensure no division by zero
-        deltaSaturated = delta + scaleFactor * (deltaSaturated - delta);
-    }
-    float3 result = gray + deltaSaturated * amount;
-
-    return result;
-}
-
-/////////////////////////////////////////////
-//MISC - BLURS
-/////////////////////////////////////////////
-
-float4 BoxBlur(sampler s, float2 uv, float blurSize, int DownsampleAmount)
-{
-    float4 color = float4(0.0, 0.0, 0.0, 0.0);
-    int samples = 3; // Number of samples in each direction (total samples will be (2*samples + 1)^2)
-
-    for (int x = -samples; x <= samples; ++x)
-    {
-        for (int y = -samples; y <= samples; ++y)
-        {
-            float2 offset = float2(x, y) * GetPixelSize() * DownsampleAmount * blurSize;
-            color += tex2D(s, uv + offset);
-        }
-    }
-
-    // Average the accumulated color
-    float sampleCount = (2 * samples + 1) * (2 * samples + 1);
-    return color / sampleCount;
-}
-
-float4 CircularBlur(sampler s, float2 uv, float blurSize, int sampleCount, int DownsampleAmount)
-{
-    float4 color = float4(0.0, 0.0, 0.0, 0.0);
-    float radius = blurSize;
-    float sampleAngle = 2.0 * 3.14159265359 / sampleCount; // Divide circle into equal segments
-
-    for (int i = 0; i < sampleCount; ++i)
-    {
-        float angle = sampleAngle * i;
-        float2 offset = float2(cos(angle), sin(angle)) * radius * GetPixelSize() * DownsampleAmount;
-        color += tex2D(s, uv + offset);
-    }
-
-    return color / sampleCount;
-}
-
-/////////////////////////////////////////////
-//MISC - Depth
-/////////////////////////////////////////////
-
-float GetLinearizedDepth(sampler depthSampler, float2 texcoord)
-{
-    float depth = 0.0;
-
-    // Adjust texcoord for potential shader settings
-    #if RESHADE_DEPTH_INPUT_IS_UPSIDE_DOWN
-        texcoord.y = 1.0 - texcoord.y;
-    #endif
-    texcoord.x /= RESHADE_DEPTH_INPUT_X_SCALE;
-    texcoord.y /= RESHADE_DEPTH_INPUT_Y_SCALE;
-    #if RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET
-        texcoord.x -= RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET * BUFFER_RCP_WIDTH;
-    #else
-        texcoord.x -= RESHADE_DEPTH_INPUT_X_OFFSET / 2.000000001;
-    #endif
-    #if RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET
-        texcoord.y += RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET * BUFFER_RCP_HEIGHT;
-    #else
-        texcoord.y += RESHADE_DEPTH_INPUT_Y_OFFSET / 2.000000001;
-    #endif
-
-    // Sample depth from the provided sampler
-    depth = tex2Dlod(depthSampler, float4(texcoord, 0, 0)).x * RESHADE_DEPTH_MULTIPLIER;
-
-    // Apply depth transformations based on shader settings
-    #if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
-        static const float C = 0.01;
-        depth = (exp(depth * LOG(C + 1.0)) - 1.0) / C;
-    #endif
-    #if RESHADE_DEPTH_INPUT_IS_REVERSED
-        depth = 1.0 - depth;
-    #endif
-
-    // Linearize depth value
-    static const float N = 1.0;
-    depth /= RESHADE_DEPTH_LINEARIZATION_FAR_PLANE - depth * (RESHADE_DEPTH_LINEARIZATION_FAR_PLANE - N);
-
-    // Clamp the depth value to ensure it's within the valid range [0, 1]
-    return saturate(depth);
-}
-
 
 /////////////////////////////////////////////
 //CONVERSIONS - LUMA
@@ -420,6 +323,387 @@ float3 BT2020_2_BT709(float3 color)
 }
 
 /////////////////////////////////////////////
+//OKLAB
+/////////////////////////////////////////////
+
+float3 RGBToOKLab(float3 c)
+{
+	float l = (0.4122214708f * c.r) + (0.5363325363f * c.g) + (0.0514459929f * c.b);
+	float m = (0.2119034982f * c.r) + (0.6806995451f * c.g) + (0.1073969566f * c.b);
+	float s = (0.0883024619f * c.r) + (0.2817188376f * c.g) + (0.6299787005f * c.b);
+    
+	float l_ = pow(abs(l), 1.f / 3.f) * sign(l);
+	float m_ = pow(abs(m), 1.f / 3.f) * sign(m);
+	float s_ = pow(abs(s), 1.f / 3.f) * sign(s);
+
+	return float3(
+		(0.2104542553f * l_) + (0.7936177850f * m_) - (0.0040720468f * s_),
+		(1.9779984951f * l_) - (2.4285922050f * m_) + (0.4505937099f * s_),
+		(0.0259040371f * l_) + (0.7827717662f * m_) - (0.8086757660f * s_)
+	);
+}
+
+float3 OKLabToRGB(float3 c)
+{
+    float l_ = c.x + 0.3963377774f * c.y + 0.2158037573f * c.z;
+    float m_ = c.x - 0.1055613458f * c.y - 0.0638541728f * c.z;
+    float s_ = c.x - 0.0894841775f * c.y - 1.2914855480f * c.z;
+
+    float l = l_*l_*l_;
+    float m = m_*m_*m_;
+    float s = s_*s_*s_;
+
+    float3 rgb;
+    rgb.r = + 4.0767245293f*l - 3.3072168827f*m + 0.2307590544f*s;
+    rgb.g = - 1.2681437731f*l + 2.6093323231f*m - 0.3411344290f*s;
+    rgb.b = - 0.0041119885f*l - 0.7034763098f*m + 1.7068625689f*s;
+    return rgb;
+}
+
+float3 oklab_to_oklch(float3 lab) {
+	float L = lab[0];
+	float a = lab[1];
+	float b = lab[2];
+	return float3(
+		L,
+		sqrt((a*a) + (b*b)),
+		atan2(b, a)
+	);
+}
+
+float3 oklch_to_oklab(float3 lch) {
+	float L = lch[0];
+	float C = lch[1];
+	float h = lch[2];
+	return float3(
+		L,
+		C * cos(h),
+		C * sin(h)
+	);
+}
+
+float3 oklch_to_linear_srgb(float3 lch) {
+	return OKLabToRGB(
+			oklch_to_oklab(lch)
+	);
+}
+
+float3 linear_srgb_to_oklch(float3 rgb) {
+	return oklab_to_oklch(
+		RGBToOKLab(rgb)
+	);
+}
+
+/////////////////////////////////////////////
+//MISC - FUNCTIONS
+/////////////////////////////////////////////
+
+float2 GetResolution()
+{
+	return float2(BUFFER_WIDTH, BUFFER_HEIGHT);
+}
+
+float2 GetPixelSize()
+{
+	return float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT);
+}
+
+float GetAspectRatio()
+{
+	return BUFFER_WIDTH * BUFFER_RCP_HEIGHT;
+}
+
+float4 GetScreenParams()
+{
+	return float4(GetResolution(), GetPixelSize());
+}
+
+/////////////////////////////////////////////
+//MISC - BLURS
+/////////////////////////////////////////////
+
+float4 BoxBlur(sampler s, float2 uv, float blurSize, int DownsampleAmount)
+{
+    float4 color = float4(0.0, 0.0, 0.0, 0.0);
+    int samples = 3; // Number of samples in each direction (total samples will be (2*samples + 1)^2)
+
+    for (int x = -samples; x <= samples; ++x)
+    {
+        for (int y = -samples; y <= samples; ++y)
+        {
+            float2 offset = float2(x, y) * GetPixelSize() * DownsampleAmount * blurSize;
+            color += tex2D(s, uv + offset);
+        }
+    }
+
+    // Average the accumulated color
+    float sampleCount = (2 * samples + 1) * (2 * samples + 1);
+    return color / sampleCount;
+}
+
+float4 CircularBlur(sampler s, float2 uv, float blurSize, int sampleCount, int DownsampleAmount)
+{
+    float4 color = float4(0.0, 0.0, 0.0, 0.0);
+    float radius = blurSize;
+    float sampleAngle = 2.0 * 3.14159265359 / sampleCount; // Divide circle into equal segments
+
+    for (int i = 0; i < sampleCount; ++i)
+    {
+        float angle = sampleAngle * i;
+        float2 offset = float2(cos(angle), sin(angle)) * radius * GetPixelSize() * DownsampleAmount;
+        color += tex2D(s, uv + offset);
+    }
+
+    return color / sampleCount;
+}
+
+/////////////////////////////////////////////
+//MISC - Depth
+/////////////////////////////////////////////
+
+float GetLinearizedDepth(sampler depthSampler, float2 texcoord)
+{
+    float depth = 0.0;
+
+    // Adjust texcoord for potential shader settings
+    #if RESHADE_DEPTH_INPUT_IS_UPSIDE_DOWN
+        texcoord.y = 1.0 - texcoord.y;
+    #endif
+    texcoord.x /= RESHADE_DEPTH_INPUT_X_SCALE;
+    texcoord.y /= RESHADE_DEPTH_INPUT_Y_SCALE;
+    #if RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET
+        texcoord.x -= RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET * BUFFER_RCP_WIDTH;
+    #else
+        texcoord.x -= RESHADE_DEPTH_INPUT_X_OFFSET / 2.000000001;
+    #endif
+    #if RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET
+        texcoord.y += RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET * BUFFER_RCP_HEIGHT;
+    #else
+        texcoord.y += RESHADE_DEPTH_INPUT_Y_OFFSET / 2.000000001;
+    #endif
+
+    // Sample depth from the provided sampler
+    depth = tex2Dlod(depthSampler, float4(texcoord, 0, 0)).x * RESHADE_DEPTH_MULTIPLIER;
+
+    // Apply depth transformations based on shader settings
+    #if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
+        static const float C = 0.01;
+        depth = (exp(depth * LOG(C + 1.0)) - 1.0) / C;
+    #endif
+    #if RESHADE_DEPTH_INPUT_IS_REVERSED
+        depth = 1.0 - depth;
+    #endif
+
+    // Linearize depth value
+    static const float N = 1.0;
+    depth /= RESHADE_DEPTH_LINEARIZATION_FAR_PLANE - depth * (RESHADE_DEPTH_LINEARIZATION_FAR_PLANE - N);
+
+    // Clamp the depth value to ensure it's within the valid range [0, 1]
+    return saturate(depth);
+}
+
+/////////////////////////////////////////////
+//SATURATION - CONVERSIONS
+/////////////////////////////////////////////
+
+float hue2rgb(float p, float q, float t)
+{
+    if (t < 0.0f) t += 1.0f;
+    if (t > 1.0f) t -= 1.0f;
+    if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+    if (t < 1.0f / 2.0f) return q;
+    if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+    return p;
+}
+
+float3 RGBtoHSL(float3 color)
+{
+    float max = MAXRGB(color);
+    float min = MINRGB(color);
+    float delta = max - min;
+    float h = 0.0f;
+    float s = 0.0f;
+    float l = (max + min) * 0.5f;
+
+    if (delta > 0.0f)
+    {
+        s = SafeDivide(delta, (l < 0.5f ? (max + min) : (2.0f - max - min)));
+        if (color.r == max)
+            h = SafeDivide((color.g - color.b), delta) + (color.g < color.b ? 6.0f : 0.0f);
+        else if (color.g == max)
+            h = SafeDivide((color.b - color.r), delta) + 2.0f;
+        else
+            h = SafeDivide((color.r - color.g), delta) + 4.0f;
+        h /= 6.0f;
+    }
+
+    return float3(h, s, l);
+}
+
+float3 HSLtoRGB(float3 hsl)
+{
+    float h = hsl.x;
+    float s = hsl.y;
+    float l = hsl.z;
+
+    float r, g, b;
+
+    if (s == 0.0f)
+    {
+        r = g = b = l; // achromatic
+    }
+    else
+    {
+        float q = l < 0.5f ? l * (1.0f + s) : l + s - l * s;
+        float p = 2.0f * l - q;
+        r = hue2rgb(p, q, h + 1.0f / 3.0f);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1.0f / 3.0f);
+    }
+
+    return float3(r, g, b);
+}
+
+float3 RGBtoHSV(float3 color)
+{
+    float max = MAXRGB(color);
+    float min = MINRGB(color);
+    float delta = max - min;
+    float h = 0.0f;
+    float s = (max == 0.0f) ? 0.0f : delta / max;
+    float v = max;
+
+    if (delta != 0.0f)
+    {
+        if (color.r == max)
+            h = (color.g - color.b) / delta + (color.g < color.b ? 6.0f : 0.0f);
+        else if (color.g == max)
+            h = (color.b - color.r) / delta + 2.0f;
+        else
+            h = (color.r - color.g) / delta + 4.0f;
+        h /= 6.0f;
+    }
+
+    return float3(h, s, v);
+}
+
+float3 HSVtoRGB(float3 hsv)
+{
+    float h = hsv.x * 6.0f;
+    float s = hsv.y;
+    float v = hsv.z;
+
+    int i = (int)floor(h);
+    float f = h - i;
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - s * f);
+    float t = v * (1.0f - s * (1.0f - f));
+
+    float3 rgb;
+    switch (i % 6)
+    {
+        case 0: rgb = float3(v, t, p); break;
+        case 1: rgb = float3(q, v, p); break;
+        case 2: rgb = float3(p, v, t); break;
+        case 3: rgb = float3(p, q, v); break;
+        case 4: rgb = float3(t, p, v); break;
+        case 5: rgb = float3(v, p, q); break;
+    }
+
+    return rgb;
+}
+
+float3 RGBtoYUV(float3 color)
+{
+    float3 yuv;
+    yuv.x = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+    yuv.y = -0.14713 * color.r - 0.28886 * color.g + 0.436 * color.b;
+    yuv.z = 0.615 * color.r - 0.51499 * color.g - 0.10001 * color.b;
+    return yuv;
+}
+
+float3 YUVtoRGB(float3 yuv)
+{
+    float3 rgb;
+    rgb.r = yuv.x + 1.13983 * yuv.z;
+    rgb.g = yuv.x - 0.39465 * yuv.y - 0.58060 * yuv.z;
+    rgb.b = yuv.x + 2.03211 * yuv.y;
+    return rgb;
+}
+
+/////////////////////////////////////////////
+//SATURATION - FUNCTIONS
+/////////////////////////////////////////////
+
+float luminance(float3 color, float3 lumCoeff)
+{
+    return dot(color, lumCoeff);
+}
+
+float3 LumaSaturation(float3 color, float amount)
+{
+    float luminanceHDR = luminance(color, lumCoeffHDR);
+    return lerp(luminanceHDR, color, amount);
+}
+
+float3 HSLSaturation(float3 color, float amount)
+{
+    float3 hsl = RGBtoHSL(color.rgb);
+    hsl.y *= amount;
+    return HSLtoRGB(hsl);
+}
+
+float3 HSVSaturation(float3 color, float saturation)
+{
+    float3 hsv = RGBtoHSV(color.rgb);
+    hsv.y *= saturation;
+    return max(HSVtoRGB(hsv), 0.f);
+}
+
+float3 YUVSaturation(float3 color, float saturation)
+{
+    float3 yuv = RGBtoYUV(color.rgb);
+    yuv.yz *= saturation;
+    return YUVtoRGB(yuv);
+}
+
+float3 AverageSaturation(float3 color, float saturation)
+{
+    float avg = (color.r + color.g + color.b) / 3.0f;
+	return lerp(float3(avg, avg, avg), color.rgb, saturation);
+}
+
+float3 MinSaturation(float3 color, float saturation)
+{
+    float minVal = MINRGB(color);
+    return min(lerp(float3(minVal, minVal, minVal), color.rgb, saturation), PQMaxWhitePoint);
+}
+
+float3 MaxSaturation(float3 color, float saturation)
+{
+    float maxVal = MAXRGB(color);
+    return max(lerp(float3(maxVal, maxVal, maxVal), color.rgb, saturation), 0.f);
+}
+
+/**
+float3 ExtendedSaturation(float3 color, float amount)
+{
+    float gray = luminance(color, lumCoeffHDR);
+    float3 delta = color - gray;
+    float maxDelta = MAXRGB(delta);
+    float3 deltaSaturated = delta;
+    if (maxDelta > 0.001)
+    {
+        float3 scaleFactor = maxDelta / max(maxDelta, 0.001); // Ensure no division by zero
+        deltaSaturated = delta + scaleFactor * (deltaSaturated - delta);
+    }
+    float3 result = gray + deltaSaturated * amount;
+
+    return result;
+}
+**/
+
+/////////////////////////////////////////////
 //TMOs
 /////////////////////////////////////////////
 
@@ -501,108 +785,4 @@ float3 Lottes_Inverse(float3 color)
 	float3 invTonemapped = pow(tonemapped / k, 2.2 / n);
 
 	return invTonemapped;
-}
-
-/////////////////////////////////////////////
-//OKLAB
-/////////////////////////////////////////////
-
-float3 RGBToOKLab(float3 c)
-{
-	float l = (0.4122214708f * c.r) + (0.5363325363f * c.g) + (0.0514459929f * c.b);
-	float m = (0.2119034982f * c.r) + (0.6806995451f * c.g) + (0.1073969566f * c.b);
-	float s = (0.0883024619f * c.r) + (0.2817188376f * c.g) + (0.6299787005f * c.b);
-    
-	float l_ = pow(abs(l), 1.f / 3.f) * sign(l);
-	float m_ = pow(abs(m), 1.f / 3.f) * sign(m);
-	float s_ = pow(abs(s), 1.f / 3.f) * sign(s);
-
-	return float3(
-		(0.2104542553f * l_) + (0.7936177850f * m_) - (0.0040720468f * s_),
-		(1.9779984951f * l_) - (2.4285922050f * m_) + (0.4505937099f * s_),
-		(0.0259040371f * l_) + (0.7827717662f * m_) - (0.8086757660f * s_)
-	);
-}
-
-float3 OKLabToRGB(float3 c)
-{
-    float l_ = c.x + 0.3963377774f * c.y + 0.2158037573f * c.z;
-    float m_ = c.x - 0.1055613458f * c.y - 0.0638541728f * c.z;
-    float s_ = c.x - 0.0894841775f * c.y - 1.2914855480f * c.z;
-
-    float l = l_*l_*l_;
-    float m = m_*m_*m_;
-    float s = s_*s_*s_;
-
-    float3 rgb;
-    rgb.r = + 4.0767245293f*l - 3.3072168827f*m + 0.2307590544f*s;
-    rgb.g = - 1.2681437731f*l + 2.6093323231f*m - 0.3411344290f*s;
-    rgb.b = - 0.0041119885f*l - 0.7034763098f*m + 1.7068625689f*s;
-    return rgb;
-}
-
-float3 oklab_to_oklch(float3 lab) {
-	float L = lab[0];
-	float a = lab[1];
-	float b = lab[2];
-	return float3(
-		L,
-		sqrt((a*a) + (b*b)),
-		atan2(b, a)
-	);
-}
-
-float3 oklch_to_oklab(float3 lch) {
-	float L = lch[0];
-	float C = lch[1];
-	float h = lch[2];
-	return float3(
-		L,
-		C * cos(h),
-		C * sin(h)
-	);
-}
-
-float3 oklch_to_linear_srgb(float3 lch) {
-	return OKLabToRGB(
-			oklch_to_oklab(lch)
-	);
-}
-
-float3 linear_srgb_to_oklch(float3 rgb) {
-	return oklab_to_oklch(
-		RGBToOKLab(rgb)
-	);
-}
-
-/////////////////////////////////////////////
-//NAN-INF FIX
-/////////////////////////////////////////////
-
-bool IsNAN(const float input)
-{
-    if (isnan(input) || isinf(input))
-        return true;
-    else
-        return false;
-}
-
-float fixNAN(const float input)
-{
-    if (IsNAN(input))
-        return 0.f;
-    else
-        return input;
-}
-
-float3 fixNAN(float3 input)
-{
-    if (IsNAN(input.r))
-        input.r = 0.f;
-    else if (IsNAN(input.g))
-        input.g = 0.f;
-    else if (IsNAN(input.b))
-        input.b = 0.f;
-  
-    return input;
 }

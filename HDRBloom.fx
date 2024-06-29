@@ -18,7 +18,7 @@
 #endif
 
 #ifndef DOWNSAMPLE
-#define DOWNSAMPLE 2
+#define DOWNSAMPLE 4
 #endif
 
 #ifndef LINEAR_CONVERSION
@@ -105,7 +105,7 @@ uniform float BloomBlurSize
     ui_type = "slider";
     ui_min = 0.1;
     ui_max = 2.0;
-> = 0.75;
+> = 1.0;
 
 #if ADDITIONAL_BLUR_PASS
 uniform float BloomSecondBlurSize
@@ -119,8 +119,8 @@ uniform float BloomSecondBlurSize
         "\n" "\n" "Default: 1.6";
     ui_type = "slider";
     ui_min = 0.0;
-    ui_max = 2.0;
-> = 1.65;
+    ui_max = 10.0;
+> = 10.0;
 #endif
 
 uniform int BlendingType
@@ -163,6 +163,7 @@ sampler BloomCombined
 	    Texture = BloomCombinedTex;
 	    MinFilter = LINEAR;
 	    MagFilter = LINEAR;
+	    MipFilter = LINEAR;
 	    AddressU = Border;
 	    AddressV = Border;
 };
@@ -178,9 +179,12 @@ sampler BloomCombined
 	\
 	sampler TexName \
 	{ \
-	    Texture = TexName##Mip; \
-	    AddressU = Border; \
-	    AddressV = Border; \
+        Texture = TexName##Mip; \
+        MinFilter = LINEAR; \
+        MagFilter = LINEAR; \
+        MipFilter = LINEAR; \
+        AddressU = Border; \
+        AddressV = Border; \
 	}
 
 	DECLARE_BLOOM_TEXTURE(Intermediate, 1);
@@ -220,31 +224,31 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	color *= BloomBrightness;
 
 	// Bloom Saturation
-	color.rgb = BasicSaturation(color.rgb, BloomSaturation);
+	color.rgb = LumaSaturation(color.rgb, BloomSaturation);
     
     return color;
 }
 
 float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int kernelSize)
 {
-	float3 weights[13];	
-	if (SampleCount == 0)
-		{
-			kernelSize = 5;
-		}
-	else if (SampleCount == 1)
-		{
-			kernelSize = 7;
-		}
-	else if (SampleCount == 2)
-		{
-			kernelSize = 11;
-		}
-	else if (SampleCount == 3)
-		{
-			kernelSize = 13;
-		}
-		
+    float3 weights[13];    
+    if (SampleCount == 0)
+        {
+            kernelSize = 5;
+        }
+    else if (SampleCount == 1)
+        {
+            kernelSize = 7;
+        }
+    else if (SampleCount == 2)
+        {
+            kernelSize = 11;
+        }
+    else if (SampleCount == 3)
+        {
+            kernelSize = 13;
+        }
+        
     switch (kernelSize)
     {
         case 5:
@@ -259,10 +263,10 @@ float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int 
             for (int i = 0; i < kernelSize; ++i)
                 weights[i] = Weights11[i];
             break;
-		case 13:
-			for (int i = 0; i < kernelSize; ++i)
-			    weights[i] = Weights13[i];
-			break;
+        case 13:
+            for (int i = 0; i < kernelSize; ++i)
+                weights[i] = Weights13[i];
+            break;
         default:
             kernelSize = 5; // Default to 5 if SampleCount is out of expected range
             for (int i = 0; i < kernelSize; ++i)
@@ -277,10 +281,10 @@ float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int 
     for (int i = 0; i < kernelSize; ++i)
     {
         // Calculate offset
-        float2 offset = direction * GetPixelSize() * DownsampleAmount * sqrt(kernelSize) * blurSize * (i - halfSamples);
+        float2 offset = direction * GetPixelSize() * DownsampleAmount * (blurSize / DownsampleAmount) * sqrt(2.0 * PI) * (i - halfSamples);
 
         // Accumulate blurred color
-        color += tex2D(s, uv - offset).rgba * weights[i];
+        color += tex2D(s, uv - offset).rgba * weights[i].xxxx;
     }
 
     return color;
@@ -296,8 +300,7 @@ float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int 
         return GaussianBlur(Intermediate, texcoord, float2(0.0, Scale), BloomBlurSize, SampleCount); \
     }
 
-	// Define blur functions for each mip level
-	DEFINE_BLUR_FUNCTIONS(0, 1, Bloom0, 0.5);
+	DEFINE_BLUR_FUNCTIONS(0, 1, Bloom0, 1);
 	DEFINE_BLUR_FUNCTIONS(2, 3, Bloom0, 2);
 	DEFINE_BLUR_FUNCTIONS(4, 5, Bloom1, 4);
 	DEFINE_BLUR_FUNCTIONS(6, 7, Bloom2, 8);
@@ -309,7 +312,19 @@ float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int 
 float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
 	float4 MergedBloom = 0.0;
-    // Adding all passes	
+    
+#if ADDITIONAL_BLUR_PASS
+	// Adding all passes	
+	MergedBloom +=
+		CircularBlur(Bloom0, texcoord, BloomSecondBlurSize * 0.1, 12, DownsampleAmount.x) +
+		CircularBlur(Bloom1, texcoord, BloomSecondBlurSize * 0.2, 12, DownsampleAmount.x) +
+		CircularBlur(Bloom2, texcoord, BloomSecondBlurSize * 0.4, 12, DownsampleAmount.x) +
+		CircularBlur(Bloom3, texcoord, BloomSecondBlurSize * 0.8, 12, DownsampleAmount.x) +
+		CircularBlur(Bloom4, texcoord, BloomSecondBlurSize * 1.6, 12, DownsampleAmount.x) +
+		CircularBlur(Bloom5, texcoord, BloomSecondBlurSize * 3.2, 12, DownsampleAmount.x);
+	MergedBloom /= 6;	
+#else	
+	 // Adding all passes	
 	MergedBloom +=
 		tex2D(Bloom0, texcoord) +
 		tex2D(Bloom1, texcoord) +
@@ -318,6 +333,7 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 		tex2D(Bloom4, texcoord) +
 		tex2D(Bloom5, texcoord);
 	MergedBloom /= 6;
+#endif
 	
     return MergedBloom;  
 }
@@ -327,12 +343,12 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
     float4 finalcolor = tex2D(Color, texcoord);
     float4 bloom = tex2D(BloomCombined, texcoord);
 	
-	#if ADDITIONAL_BLUR_PASS
-	    // Apply dual-pass Gaussian blur
-	    bloom = CircularBlur(BloomCombined, texcoord, BloomSecondBlurSize, 12, DownsampleAmount.x);
-	    bloom /= 3.0;
-    #endif
-	
+	// There can be a ONE MORE blurring step here, but at this point, it's pretty destructive
+    //
+	//bloom = CircularBlur(BloomCombined, texcoord, BloomSecondBlurSize, 12, DownsampleAmount.x);
+    //bloom = BoxBlur(BloomCombined, texcoord, BloomSecondBlurSize, DownsampleAmount.x);
+    //bloom /= 3.0;
+    	
 	uint inColorSpace = IN_COLOR_SPACE;
     if (inColorSpace == 2) // HDR10 BT.2020 PQ
     {

@@ -25,7 +25,7 @@
 #endif
 
 #ifndef DEPTH_ENABLE
-#define DEPTH_ENABLE 1
+#define DEPTH_ENABLE 0
 #endif
 
 #define VELOCITY_SCALE 50.0
@@ -82,8 +82,38 @@ uniform float  UI_BLUR_DEPTH_WEIGHT <
 	ui_type = "slider";
     ui_tooltip = 
 	"How much depth affects blur - depth contrast.";
-	ui_category = "Motion Blur";
-> = 16.00;
+	ui_category = "Depth";
+> = 12.00;
+
+uniform float  UI_BLUR_DEPTH_BLUR_EDGES <
+	ui_label = "Blur Depth Edges Blurring";
+    ui_min = 0.0;
+    ui_max = 10.0;
+    ui_step = 0.01;
+	ui_type = "slider";
+    ui_tooltip = 
+	"How much depth texture get's blurred to make edges softer";
+	ui_category = "Depth";
+> = 6;
+
+uniform int  UI_BLUR_DEPTH_BLUR_SAMPLES <
+	ui_label = "Blur Depth Blurring Samples";
+    ui_min = 6;
+    ui_max = 32;
+    ui_step = 1;
+	ui_type = "slider";
+    ui_tooltip = 
+	"How much depth texture get's blurred to make edges softer";
+	ui_category = "Depth";
+> = 16;
+
+uniform bool ShowDepth
+<
+	ui_category = "Depth";
+    ui_label = "Show Depth";
+    ui_tooltip =
+        "Displays the depth texture.";
+> = false;
 #endif
 
 #if FAKE_GAIN
@@ -218,19 +248,23 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD ) : SV_Target
 	float2 velocityTimed = velocity / frametime;
 	
 	#if DEPTH_ENABLE
-		float4 depthbuffer = CircularBlur(samplerDepthProcessed, texcoord, 4.5, 12, 1);
+		float4 depthbuffer = CircularBlur(samplerDepthProcessed, texcoord, UI_BLUR_DEPTH_BLUR_EDGES, UI_BLUR_DEPTH_BLUR_SAMPLES, 1);
 		float4 depthBufferScaled = saturate(pow((1.0 - depthbuffer.xyzw), UI_BLUR_DEPTH_WEIGHT));  
 	#endif
 
 	float2 blurDist = 0.0;
 	#if DEPTH_ENABLE
+	
 		{
 			blurDist = velocityTimed * VELOCITY_SCALE * (depthBufferScaled.xx) * UI_BLUR_LENGTH;
 		}
+		
 	#else
+	
 		{
 			blurDist = velocityTimed * VELOCITY_SCALE * UI_BLUR_LENGTH;
 		}
+		
 	#endif
 	
 	float2 sampleDist = blurDist / UI_BLUR_SAMPLES_MAX;
@@ -242,7 +276,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD ) : SV_Target
 	for(int s = 0; s < UI_BLUR_SAMPLES_MAX; s++)
 	{
 		sampled = tex2D(samplerColor, texcoord - sampleDist * (s - HALF_SAMPLES));
-
+		
 		if (inColorSpace == 2) // HDR10 BT.2020 PQ
 		{
 		    sampled.rgb = PQ_to_linear(sampled.rgb);
@@ -342,8 +376,12 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD ) : SV_Target
 		finalcolor.rgb = linear_to_sRGB(finalcolor.rgb);
 	#endif
 	
-	// Depth buffer debug
-	//return depthBufferScaled.xxxx;
+	#if DEPTH_ENABLE
+	finalcolor = ShowDepth
+		? depthBufferScaled.xxxx
+		: finalcolor;
+	#endif
+	
 	return finalcolor;
 }
 

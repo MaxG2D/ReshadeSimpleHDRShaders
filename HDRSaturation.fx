@@ -8,19 +8,23 @@
 #include "ReShade.fxh"
 #include "HDRShadersFunctions.fxh"
 
-static const int 
-	Basic = 0,
-	Extended = 1;
+static const int
+	Luma = 0,
+	HSL = 1,
+	HSV = 2,
+	YUV = 3,
+	Average = 4,
+	Max = 5;
 
 uniform int saturation_method
 <
 	ui_label = "Sat method";
 	ui_tooltip =
-		"Either use basic lerp saturation, or more advance saturation that aims to keep hues in check"
-		"\n""\n" "Default: Basic";
+		"Specify which saturation function is used"
+		"\n""\n" "Default: HSV";
 	ui_type = "combo";
-	ui_items = "Basic\0Extended\0";
-> = Basic;
+	ui_items = "Luma\0HSL\0HSV\0YUV\0Average\0Max\0";
+> = HSL;
 
 uniform float amount < 
     ui_min = -1.0; ui_max = 5.0;
@@ -28,7 +32,7 @@ uniform float amount <
     ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
     ui_step = 0.01;
 	ui_type = "slider";
-> = 1.5;
+> = 1.0;
 
 uniform float limit_to_highlight < 
     ui_min = 0.0; ui_max = 1.0;
@@ -36,15 +40,15 @@ uniform float limit_to_highlight <
     ui_tooltip = "Switch between global or highlight only saturation";
     ui_step = 0.01;
 	ui_type = "slider";
-> = 0.95;
+> = 0.98;
 
 uniform float gamut_expansion < 
-    ui_min = 0.0; ui_max = 5.0;
+    ui_min = 0.0; ui_max = 10.0;
     ui_label = "Sat gamut expansion";
     ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
     ui_step = 0.01;
 	ui_type = "slider";
-> = 0.5;
+> = 1.0;
 
 float rangeCompressPow(float x, float fPow)
 {
@@ -105,24 +109,63 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 tex : TEXCOORD) : 
         const float midSaturationRatio = OklabLightness;
         float ratio_blend = lerp(midSaturationRatio, highlightSaturationRatio, limit_to_highlight);
         
-		if (saturation_method == Basic)	
+		if (saturation_method == Luma)	
 		{
-        	c1 = BasicSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	c1 = LumaSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
 		}
-		else if (saturation_method == Extended)
+		else if (saturation_method == HSL)
 		{
-        	c1 = ExtendedSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	c1 = HSLSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+		}
+		else if (saturation_method == HSV)
+		{
+        	c1 = HSVSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+		}
+		else if (saturation_method == YUV)
+		{
+        	c1 = YUVSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+		}
+		else if (saturation_method == Average)
+		{
+        	c1 = AverageSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+		}
+		else if (saturation_method == Max)
+		{
+        	c1 = MaxSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
 		}
     }
 
     if (amount < 0.0)
-    {
-        c1 = lerp(float3(HDRLuminance,HDRLuminance,HDRLuminance), c1, saturate(1.0 + amount));
+    {        
+		if (saturation_method == Luma)	
+		{
+        	c1 = LumaSaturation(c1, saturate(1.0 + amount));
+		}
+		else if (saturation_method == HSL)
+		{
+        	c1 = HSLSaturation(c1, saturate(1.0 + amount));
+		}
+		else if (saturation_method == HSV)
+		{
+        	c1 = HSVSaturation(c1, saturate(1.0 + amount));
+		}
+		else if (saturation_method == YUV)
+		{
+        	c1 = YUVSaturation(c1, saturate(1.0 + amount));
+		}
+		else if (saturation_method == Average)
+		{
+        	c1 = AverageSaturation(c1, saturate(1.0 + amount));
+		}
+		else if (saturation_method == Max)
+		{
+        	c1 = MaxSaturation(c1, saturate(1.0 + amount));
+		}
     }   
     
     if (gamut_expansion > 0.f)
     {             
-        c1 = expandGamut(c1, (gamut_expansion));
+        c1 = expandGamut(c1, (gamut_expansion * 0.01));
         c1 /= 125.f;
   	  c1 = BT709_2_BT2020(c1);
   	  c1 = saturate(c1);
