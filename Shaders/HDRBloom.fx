@@ -35,6 +35,11 @@ namespace HDRShaders
 static const int 
 	Additive = 0,
 	Overlay = 1;
+	
+static const int 
+	None = 0,
+	ACES = 1,
+	Reinhard = 2;
 
 static const int2 DownsampleAmount = DOWNSAMPLE;
 
@@ -90,18 +95,31 @@ uniform int SampleCount
     ui_tooltip = "Specify the number of samples for Gaussian blur."
 	"\n" "\n" "Medium - 5, High - 7, VeryHigh - 11, Overkill - 13\n"
 	"\n" "\n" "Default: Medium";
+	ui_category_closed = true;
     ui_type = "combo";
     ui_items = "Medium\0High\0Ultra\0Overkill\0";
 > = 0;
 
+uniform int BloomInvTMO
+<
+    ui_category = "Bloom - Advanced";
+    ui_label = "Inverse Tonemapping";
+    ui_tooltip =
+        "Optional inverse tonemapping to increase the range on the input values"
+        "\n" "\n" "Default: None";
+    ui_category_closed = true;
+    ui_type = "combo";
+    ui_items = "None\0ACES\0Reinhard\0";
+> = None;
+
 uniform float BloomBlurSize
 <
     ui_category = "Bloom - Advanced";
-    ui_category_closed = true;
     ui_label = "Blur Size";
     ui_tooltip =
         "How much gaussian blur is applied for each bloom texture pass"
         "\n" "\n" "Default: 0.75";
+	ui_category_closed = true;
     ui_type = "slider";
     ui_min = 0.1;
     ui_max = 2.0;
@@ -111,12 +129,12 @@ uniform float BloomBlurSize
 uniform float BloomSecondBlurSize
 <
     ui_category = "Bloom - Advanced";
-    ui_category_closed = true;
     ui_label = "Additional Blur Size";
     ui_tooltip =
         "The size of the gaussian blur applied to bloom texture right before it's mixed with input"
         "\n" "Used to mitigate undersampling artifacts"        
         "\n" "\n" "Default: 1.6";
+    ui_category_closed = true;
     ui_type = "slider";
     ui_min = 0.0;
     ui_max = 7.0;
@@ -137,7 +155,6 @@ uniform int BlendingType
 uniform bool ShowBloom
 <
     ui_category = "Debug";
-    ui_category_closed = true;
     ui_label = "Show Bloom";
     ui_tooltip =
         "Displays the bloom texture."
@@ -211,6 +228,18 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	#if LINEAR_CONVERSION
 		color.rgb = sRGB_to_linear(color.rgb);			
 	#endif
+
+	// Inv Tonemapping
+	if (BloomInvTMO == 0)
+		color.rgb = color.rgb;
+	else if (BloomInvTMO == 1)
+	{
+		color.rgb = ACES_Inverse(color.rgb);
+        color.rgb *= mid_gray / average(ACES_Inverse(mid_gray));
+    }
+	else if (BloomInvTMO == 2)
+		color.rgb = Reinhard_Inverse(color.rgb);
+	
     
 	#if REMOVE_SDR_VALUES
 		// HDR Thresholding (ignoring 0.0-1.0 range)
@@ -220,8 +249,9 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		}
 	#endif
 	
+
 	// Bloom Brightness
-	color *= BloomBrightness;
+	color.rgb *= BloomBrightness;
 
 	// Bloom Saturation
 	color.rgb = LumaSaturation(color.rgb, BloomSaturation);
@@ -229,49 +259,41 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
     return color;
 }
 
-float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int kernelSize)
+float4 GaussianBlur(sampler s, float2 uv, float2 direction, float blurSize, int sampleCount)
 {
-    float3 weights[13];    
-    if (SampleCount == 0)
-        {
-            kernelSize = 5;
-        }
-    else if (SampleCount == 1)
-        {
-            kernelSize = 7;
-        }
-    else if (SampleCount == 2)
-        {
-            kernelSize = 11;
-        }
-    else if (SampleCount == 3)
-        {
-            kernelSize = 13;
-        }
-        
-    switch (kernelSize)
+    float weights[13];    
+    int kernelSize = 0;
+
+    // Determine kernel size and weights based on sample count
+    if (sampleCount == 0)
     {
-        case 5:
-            for (int i = 0; i < kernelSize; ++i)
-                weights[i] = Weights5[i];
-            break;
-        case 7:
-            for (int i = 0; i < kernelSize; ++i)
-                weights[i] = Weights7[i];
-            break;
-        case 11:
-            for (int i = 0; i < kernelSize; ++i)
-                weights[i] = Weights11[i];
-            break;
-        case 13:
-            for (int i = 0; i < kernelSize; ++i)
-                weights[i] = Weights13[i];
-            break;
-        default:
-            kernelSize = 5; // Default to 5 if SampleCount is out of expected range
-            for (int i = 0; i < kernelSize; ++i)
-                weights[i] = Weights5[i];
-            break;
+        kernelSize = 5;
+        for (int i = 0; i < kernelSize; ++i)
+            weights[i] = Weights5[i];
+    }
+    else if (sampleCount == 1)
+    {
+        kernelSize = 7;
+        for (int i = 0; i < kernelSize; ++i)
+            weights[i] = Weights7[i];
+    }
+    else if (sampleCount == 2)
+    {
+        kernelSize = 11;
+        for (int i = 0; i < kernelSize; ++i)
+            weights[i] = Weights11[i];
+    }
+    else if (sampleCount == 3)
+    {
+        kernelSize = 13;
+        for (int i = 0; i < kernelSize; ++i)
+            weights[i] = Weights13[i];
+    }
+    else
+    {
+        kernelSize = 5;
+        for (int i = 0; i < kernelSize; ++i)
+            weights[i] = Weights5[i];
     }
 
     float4 color = 0.0;

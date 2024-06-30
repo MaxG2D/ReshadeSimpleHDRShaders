@@ -168,7 +168,7 @@ uniform float UI_GAIN_THRESHOLD <
     ui_tooltip = 
 	"Pixels with luminance above this value will be boosted.";
     ui_category = "HDR Simulation";
-> = 1.00;
+> = 0.75;
 
 uniform float UI_GAIN_THRESHOLD_SMOOTH <
     ui_label = "Fake Gain Smoothness";
@@ -179,7 +179,7 @@ uniform float UI_GAIN_THRESHOLD_SMOOTH <
     ui_tooltip = 
 	"Thresholding that smoothly interpolates between max and min value of luminance.";
     ui_category = "HDR Simulation";
-> = 1.00;
+> = 0.75;
 #endif 
 
 #if FAKE_GAIN_REJECT
@@ -253,10 +253,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {		  
     float2 velocity = tex2D(SamplerMotionVectors2, texcoord).xy;
     float2 velocityTimed = velocity / frametime;
-    
-    // Precompute blurDist based on depth and velocity
-    float2 blurDist = 0.0;
-    
+    float2 blurDist = 0;    
     #if DEPTH_ENABLE
         float4 depthbuffer = CircularBlur(samplerDepthProcessed, texcoord, UI_BLUR_DEPTH_BLUR_EDGES, UI_BLUR_DEPTH_BLUR_SAMPLES, 1);
         float4 depthBufferScaled = saturate(min(pow((1.0 - depthbuffer.xyzw), UI_BLUR_DEPTH_WEIGHT), 1));  
@@ -264,16 +261,13 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
         blurDist = velocityTimed * VELOCITY_SCALE * (depthBufferScaled.xx) * UI_BLUR_LENGTH;            
     #else
         blurDist = velocityTimed * VELOCITY_SCALE * UI_BLUR_LENGTH;            
-    #endif
-    
+    #endif   
     float2 sampleDist = blurDist / UI_BLUR_SAMPLES_MAX;
     float sampleDistVector = dot(sampleDist, 1.0);
     float4 summedSamples = 0;
     float4 sampled = 0;
     float4 color = tex2D(samplerColor, texcoord);
     uint inColorSpace = IN_COLOR_SPACE;
-    
-    // Precompute noise offset once outside the loop
     float2 noiseOffset = 0;
     if (abs(sampleDistVector) > 0.001)
     {

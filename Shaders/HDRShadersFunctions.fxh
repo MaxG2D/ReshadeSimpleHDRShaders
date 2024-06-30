@@ -260,6 +260,11 @@ float3 PQ_to_linear(float3 ST2084)
     return linearColor;
 }
 
+float average(float3 vColor)
+{
+    return dot(vColor, float3(1.f / 3.f, 1.f / 3.f, 1.f / 3.f));
+}
+
 /////////////////////////////////////////////
 //CONVERSIONS - CHROMA
 /////////////////////////////////////////////
@@ -752,10 +757,8 @@ float3 ACES_Inverse(float3 color)
     float c = 2.43f;
     float d = 0.59f;
     float e = 0.14f;
-    
-    // Avoid out of gamut colors from breaking the formula
-    color = saturate(color);
-    
+
+    color = saturate(color);    
     float3 fixed_numerator = (-d * color) + b;
     float3 variable_numerator_part1 = (d * color) - b;
     float3 variable_numerator = sqrt((variable_numerator_part1 * variable_numerator_part1) - (4.f * e * color * ((c * color) - a)));
@@ -775,40 +778,4 @@ float3 Reinhard(float3 color)
 float3 Reinhard_Inverse(float3 color)
 {
 	return (color * (1.0 + color)) / (1.0 + color / (HDR10_max_nits * HDR10_max_nits));	
-}
-
-//Lottes
-static const float a = 1.6;
-static const float d = 0.977;
-static const float midIn = 0.18;
-static const float midOut = 0.267;
-	
-float3 Lottes(float3 color)
-{
-	float b =
-    (-pow(midIn, a) + pow(HDR10_max_nits, a) * midOut) /
-    ((pow(HDR10_max_nits, a * d) - pow(midIn, a * d)) * midOut);
-    
-    float c =
-    (pow(HDR10_max_nits, a * d) * pow(midIn, a) - pow(HDR10_max_nits, a) * pow(midIn, a * d) * midOut) /
-    ((pow(HDR10_max_nits, a * d) - pow(midIn, a * d)) * midOut);
-
-	return color = pow(color, a) / (pow(color, a * d) * b + c);
-}
-
-float3 Lottes_Inverse(float3 color)
-{
-	float k = pow(midIn, a) / midOut;
-	float n = a / (a * d - 1.0);
-
-	float3 tonemapped = pow(color, a) 
-		/ (pow(color, a * d) * 
-		((-pow(midIn, a) + pow(HDR10_max_nits, a) * midOut) / 
-		((pow(HDR10_max_nits, a * d) - pow(midIn, a * d)) * midOut)) + 
-		((pow(HDR10_max_nits, a * d) * pow(midIn, a) - pow(HDR10_max_nits, a) * 
-		pow(midIn, a * d) * midOut) / 
-		((pow(HDR10_max_nits, a * d) - pow(midIn, a * d)) * midOut)));
-	float3 invTonemapped = pow(tonemapped / k, 2.2 / n);
-
-	return invTonemapped;
 }
