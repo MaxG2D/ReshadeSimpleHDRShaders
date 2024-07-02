@@ -52,7 +52,7 @@ Highly performant, with plethora of features to tweak:
 - Plenty of basic customization, like bloom amount, bloom texture brightness, saturation, bluring range, quality, etc
 - Option to properly remove SDR range from the input, to make sure bloom is not overly "hazy" (for obvious reasons, it only works in HDR)
 - Variable downsampling and gaussian blur samples quality
-- Debug option to show bloom texture only, which helps immensly in tweak the values
+- Debug option to show bloom texture only, which helps immensly in tweaking the values
 ----------
 
 # Credits
