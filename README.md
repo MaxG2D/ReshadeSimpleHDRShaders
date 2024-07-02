@@ -48,6 +48,7 @@ Highly performant, with plethora of features to tweak:
 - Seperable Gaussian blur bloom
 - Additional circular bloom stage at upsampling, giving perfectly smooth and very wide bloom, at very low perf cost, fixing upsampling and temporal artifacts
 - Support for SDR, HDR10 and scRGB
+- Option to inverse tonemap input to further increase the range of values, useful for oldschool pure LDR games
 - Plenty of basic customization, like bloom amount, bloom texture brightness, saturation, bluring range, quality, etc
 - Option to properly remove SDR range from the input, to make sure bloom is not overly "hazy" (for obvious reasons, it only works in HDR)
 - Variable downsampling and gaussian blur samples quality
