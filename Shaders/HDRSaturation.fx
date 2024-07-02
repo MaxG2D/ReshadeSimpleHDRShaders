@@ -27,7 +27,7 @@ uniform int UI_SATURATION_METHOD
 		"\n""\n" "Default: HSV";
 	ui_type = "combo";
 	ui_items = "Luma\0HSL\0HSV\0YUV\0Average\0Max\0";
-> = HSL;
+> = YUV;
 
 uniform float UI_SATURATION_AMOUNT < 
     ui_min = -1.0; ui_max = 5.0;
@@ -35,7 +35,7 @@ uniform float UI_SATURATION_AMOUNT <
     ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
     ui_step = 0.01;
 	ui_type = "slider";
-> = 1.0;
+> = 2.0;
 
 uniform float UI_SATURATION_LIMIT < 
     ui_min = 0.0; ui_max = 1.0;
@@ -43,10 +43,10 @@ uniform float UI_SATURATION_LIMIT <
     ui_tooltip = "Switch between global or highlight only saturation";
     ui_step = 0.01;
 	ui_type = "slider";
-> = 0.98;
+> = 0.99;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION < 
-    ui_min = 0.0; ui_max = 10.0;
+    ui_min = 0.0; ui_max = 100.0;
     ui_label = "Gamut Expansion";
     ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
     ui_step = 0.01;
