@@ -1,6 +1,6 @@
 # Various HDR shaders
 
-## [Download]()
+## [Download](https://github.com/MaxG2D/ReshadeSimpleHDRShaders/releases)
 
 There's a lot of cool shaders that focus on the getting most basic HDR display adjustments and fixes right, most noteably [Lilium's](https://github.com/EndlesslyFlowering/ReShade_HDR_shaders) and [Pumbo's](https://github.com/Filoppi/PumboAutoHDR), which are absolutely essential shaders. This is a very high quality stuff with a lot of various math involved to get the most proper HDR experience.
 
@@ -11,10 +11,13 @@ This repo tries something else. It's 2 main focus points are:
 # Currently available shaders:
 
 
-# ----------------------  HDR Motion Blur  ----------------------
+# ----------------------  HDR Motion Blur  ---------------------
 
+(This video is HDR encoded, should work on most chromium based browsers. On different browser, it will be clipped to SDR range.)
 
-This is something that I've been experimenting a lot before I even had a HDR capable TV, so it has a lot of legacy SDR support. It's feature rich to enhance the contrast of the blur, but if output is pure, untonemapped HDR color, it shouldn't need any tweaking, giving nice, bright highlights out of the box. Otherwise, it might a good idea to use a bit of fake gain function, or linear conversion.
+https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/439638ee-fed6-4656-888e-9ab927d5d1ef
+
+This is something that I've been experimenting a lot before I even had a HDR capable TV. It's feature rich to enhance the contrast of the blur, but if output is pure, untonemapped HDR color, it shouldn't need any tweaking, giving nice, bright highlights out of the box. Otherwise, it might a good idea to use a bit of fake gain function, or linear conversion.
 
 ***It's very important that you use it with one of the widely available optical flow shaders, here are some examples:***
 
@@ -48,7 +51,16 @@ This shader is best used as a subtle sublement to HDR games that output only rec
 
 
 # ------------------------  HDR Bloom  --------------------------
+(Again, this is HDR encoded PNGs. Should work just fine on Chromium browser, On different browser, it will be tonemapped to SDR range.
+From left to right: Bloom off, Bloom on, Bloom debug view)
 
+<p align="center" width="100%">
+<img width="33%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/59189fdf-df4f-4547-b8b3-eb092271c030">
+
+<img width="33%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/553592f6-8f26-4c23-9585-f29337ecb92e">
+
+<img width="33%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/5302b73b-2312-49ff-a99a-e01e06924033">
+</p>
 
 Based on awesome Luluco250's [MagicHDR shader](https://github.com/luluco250/FXShaders/blob/master/Shaders/MagicHDR.fx), I've made my own take on  fully HDR-Compatible bloom shader.
 Highly performant, with very wide, realistic blur, coupled with plethora of features to tweak.
