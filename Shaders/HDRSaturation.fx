@@ -2,12 +2,14 @@
  - Reshade HDR Saturation
  - Original code copyright, Pumbo
  - Tweaks and edits by MaxG3D
- */
+ **/
 
+// Includes
 #include "ReShadeUI.fxh"
 #include "ReShade.fxh"
 #include "HDRShadersFunctions.fxh"
 
+// Defines
 static const int
 	Luma = 0,
 	HSL = 1,
@@ -16,9 +18,9 @@ static const int
 	Average = 4,
 	Max = 5;
 
-uniform int saturation_method
+uniform int UI_SATURATION_METHOD
 <
-	ui_label = "Sat method";
+	ui_label = "Method";
 	ui_tooltip =
 		"Specify which saturation function is used"
 		"\n""\n" "Default: HSV";
@@ -26,168 +28,130 @@ uniform int saturation_method
 	ui_items = "Luma\0HSL\0HSV\0YUV\0Average\0Max\0";
 > = HSL;
 
-uniform float amount < 
+uniform float UI_SATURATION_AMOUNT < 
     ui_min = -1.0; ui_max = 5.0;
-	ui_label = "Sat amount";
+	ui_label = "Amount";
     ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
     ui_step = 0.01;
 	ui_type = "slider";
 > = 1.0;
 
-uniform float limit_to_highlight < 
+uniform float UI_SATURATION_LIMIT < 
     ui_min = 0.0; ui_max = 1.0;
-    ui_label = "Sat global>highlight";
+    ui_label = "Global>Highlight";
     ui_tooltip = "Switch between global or highlight only saturation";
     ui_step = 0.01;
 	ui_type = "slider";
 > = 0.98;
 
-uniform float gamut_expansion < 
+uniform float UI_SATURATION_GAMUT_EXPANSION < 
     ui_min = 0.0; ui_max = 10.0;
-    ui_label = "Sat gamut expansion";
+    ui_label = "Gamut Expansion";
     ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
     ui_step = 0.01;
 	ui_type = "slider";
 > = 1.0;
 
-float rangeCompressPow(float x, float fPow)
+float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {
-    return 1.0 - pow(exp(-x), fPow);
-}
-
-float lumaCompress(float val, float fMaxValue, float fShoulderStart, float fPow)
-{
-    float v2 = fShoulderStart + (fMaxValue - fShoulderStart) * rangeCompressPow((val - fShoulderStart) / (fMaxValue - fShoulderStart), fPow);
-    return val <= fShoulderStart ? val : v2;
-}
-
-float3 expandGamut(float3 vHDRColor, float fExpandGamut)
-{
-    const float3x3 sRGB_2_AP1 = mul(XYZ_2_AP1_MAT, mul(D65_2_D60_CAT, sRGB_2_XYZ_MAT));
-    const float3x3 AP1_2_sRGB = mul(XYZ_2_sRGB_MAT, mul(D60_2_D65_CAT, AP1_2_XYZ_MAT));
-    const float3x3 Wide_2_AP1 = mul(XYZ_2_AP1_MAT, Wide_2_XYZ_MAT);
-    const float3x3 ExpandMat = mul(Wide_2_AP1, AP1_2_sRGB);
-
-    float3 ColorAP1 = mul(sRGB_2_AP1, vHDRColor);
-
-    float LumaAP1 = dot(ColorAP1, AP1_RGB2Y);
-    if (LumaAP1 <= 0.f)
-    {
-        return vHDRColor;
-    }
-    float3 ChromaAP1 = ColorAP1 / LumaAP1;
-
-    float ChromaDistSqr = dot(ChromaAP1 - 1, ChromaAP1 - 1);
-    float ExpandAmount = (1 - exp2(-4 * ChromaDistSqr)) * (1 - exp2(-4 * fExpandGamut * LumaAP1 * LumaAP1));
-
-	float3 ColorExpand = mul(ExpandMat, mul(LumaAP1, ChromaAP1));
-	ColorAP1 = lerp(ColorAP1, ColorExpand, ExpandAmount);
-
-    vHDRColor = mul(AP1_2_sRGB, ColorAP1);
-    return vHDRColor;
-}
-
-float3 SaturationAdjustment(float4 vpos : SV_Position, float2 tex : TEXCOORD) : SV_Target
-{
-    float3 c0 = tex2D(ReShade::BackBuffer, tex).rgb;
-    c0 = clamp(c0, -FLT16_MAX, FLT16_MAX);
-    if (luminance(c0, lumCoeffHDR) < 0.f)
+    float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
+    color = clamp(color, -FLT16_MAX, FLT16_MAX);
+    if (Luminance(color, lumCoeffHDR) < 0.f)
 	{   
-	    c0 = 0.f;
+	    color = 0.f;
 	}   
-	const float3 extraColor = c0 - saturate(c0);
-    c0 = saturate(c0);   
-    c0 += extraColor;     
+	const float3 ExtraColor = color - saturate(color);
+    color = saturate(color);   
+    color += ExtraColor;     
         
-    float3 c1 = c0;
-	float HDRLuminance = luminance(c1, lumCoeffHDR); 
+    float3 PreProcessedColor = color;
+	float HDRLuminance = Luminance(PreProcessedColor, lumCoeffHDR); 
 
-	if (amount > 0.0)
+	if (UI_SATURATION_AMOUNT > 0.0)
     {
-	    const float OklabLightness = RGBToOKLab(c1)[0];
-        const float highlightSaturationRatio = (OklabLightness + (1.f / 48.f)) / (48.f / 1.f);
-        const float midSaturationRatio = OklabLightness;
-        float ratio_blend = lerp(midSaturationRatio, highlightSaturationRatio, limit_to_highlight);
+	    const float OklabLightness = RGBToOKLab(PreProcessedColor)[0];
+        const float HighlightSaturationRatio = (OklabLightness + (1.f / 48.f)) / (48.f / 1.f);
+        const float MidSaturationRatio = OklabLightness;
+        float ratio_blend = lerp(MidSaturationRatio, HighlightSaturationRatio, UI_SATURATION_LIMIT);
         
-		if (saturation_method == Luma)	
+		if (UI_SATURATION_METHOD == Luma)	
 		{
-        	c1 = LumaSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	PreProcessedColor = LumaSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
 		}
-		else if (saturation_method == HSL)
+		else if (UI_SATURATION_METHOD == HSL)
 		{
-        	c1 = HSLSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	PreProcessedColor = HSLSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
 		}
-		else if (saturation_method == HSV)
+		else if (UI_SATURATION_METHOD == HSV)
 		{
-        	c1 = HSVSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	PreProcessedColor = HSVSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
 		}
-		else if (saturation_method == YUV)
+		else if (UI_SATURATION_METHOD == YUV)
 		{
-        	c1 = YUVSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	PreProcessedColor = YUVSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
 		}
-		else if (saturation_method == Average)
+		else if (UI_SATURATION_METHOD == Average)
 		{
-        	c1 = AverageSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	PreProcessedColor = AverageSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
 		}
-		else if (saturation_method == Max)
+		else if (UI_SATURATION_METHOD == Max)
 		{
-        	c1 = MaxSaturation(c1, lerp(1.f, amount + 1, (ratio_blend)));
+        	PreProcessedColor = MaxSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
 		}
     }
 
-    if (amount < 0.0)
+    if (UI_SATURATION_AMOUNT < 0.0)
     {        
-		if (saturation_method == Luma)	
+		if (UI_SATURATION_METHOD == Luma)	
 		{
-        	c1 = LumaSaturation(c1, saturate(1.0 + amount));
+        	PreProcessedColor = LumaSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
 		}
-		else if (saturation_method == HSL)
+		else if (UI_SATURATION_METHOD == HSL)
 		{
-        	c1 = HSLSaturation(c1, saturate(1.0 + amount));
+        	PreProcessedColor = HSLSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
 		}
-		else if (saturation_method == HSV)
+		else if (UI_SATURATION_METHOD == HSV)
 		{
-        	c1 = HSVSaturation(c1, saturate(1.0 + amount));
+        	PreProcessedColor = HSVSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
 		}
-		else if (saturation_method == YUV)
+		else if (UI_SATURATION_METHOD == YUV)
 		{
-        	c1 = YUVSaturation(c1, saturate(1.0 + amount));
+        	PreProcessedColor = YUVSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
 		}
-		else if (saturation_method == Average)
+		else if (UI_SATURATION_METHOD == Average)
 		{
-        	c1 = AverageSaturation(c1, saturate(1.0 + amount));
+        	PreProcessedColor = AverageSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
 		}
-		else if (saturation_method == Max)
+		else if (UI_SATURATION_METHOD == Max)
 		{
-        	c1 = MaxSaturation(c1, saturate(1.0 + amount));
+        	PreProcessedColor = MaxSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
 		}
     }   
     
-    if (gamut_expansion > 0.f)
+    if (UI_SATURATION_GAMUT_EXPANSION > 0.f)
     {             
-        c1 = expandGamut(c1, (gamut_expansion * 0.01));
-        c1 /= 125.f;
-  	  c1 = BT709_2_BT2020(c1);
-  	  c1 = saturate(c1);
-  	  c1 = BT2020_2_BT709(c1) * 125.f;
+        PreProcessedColor = ExpandGamut(PreProcessedColor, (UI_SATURATION_GAMUT_EXPANSION * 0.01));
+        PreProcessedColor /= 125.f;
+  	  PreProcessedColor = BT709_2_BT2020(PreProcessedColor);
+  	  PreProcessedColor = saturate(PreProcessedColor);
+  	  PreProcessedColor = BT2020_2_BT709(PreProcessedColor) * 125.f;
   	  
     }
     
-    float3 c2 = c1 * sourceHDRWhitepoint;
+    float3 FinalColor = PreProcessedColor * sourceHDRWhitepoint;
         	
 	if (HDRLuminance > 0.0f)
     {
-        const float maxOutputLuminance = 10000.f / sRGB_max_nits;
-        const float highlightsShoulderStart = 0.5 * maxOutputLuminance;
-        const float compressedHDRLuminance = lumaCompress(HDRLuminance, maxOutputLuminance, highlightsShoulderStart, 1);
-        c2 *= compressedHDRLuminance / HDRLuminance;
+        const float MaxOutputLuminance = 10000.f / sRGB_max_nits;
+        const float HighlightsShoulderStart = 0.5 * MaxOutputLuminance;
+        const float CompressedHDRLuminance = LumaCompress(HDRLuminance, MaxOutputLuminance, HighlightsShoulderStart, 1);
+        FinalColor *= CompressedHDRLuminance / HDRLuminance;
     }    
-    float3 XYZColor = mul(sRGB_2_XYZ_MAT, c2);
+    float3 XYZColor = mul(sRGB_2_XYZ_MAT, FinalColor);
     XYZColor = max(XYZColor, 0.f);
-    c2 = mul(XYZ_2_sRGB_MAT, XYZColor);    
-    c2 = fixNAN(c2);
-    float3 output = c2;   
-    return output;
+    FinalColor = mul(XYZ_2_sRGB_MAT, XYZColor);    
+    FinalColor = fixNAN(FinalColor);   
+    return FinalColor;
 }
 
 technique HDR_Saturation <

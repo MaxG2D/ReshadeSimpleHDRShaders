@@ -37,6 +37,7 @@
 #endif
 
 #define PI 3.1415927410125732421875f
+#define THRESHOLD_ANGLE (PI / 4.0)  // Adjust this threshold as needed
 
 #define UINT_MAX 4294967295
 #define  INT_MAX 2147483647
@@ -54,6 +55,9 @@
 #define FLT16_MAX 65504.f
 
 uniform float frametime < source = "frametime"; >;
+uniform float2 mouse_delta < source = "mousedelta"; >;
+uniform float2 mouse_point < source = "mousepoint"; >;
+uniform bool overlay_open < source = "overlay_open"; >;
 
 /////////////////////////////////////////////
 //BLUE NOISE
@@ -193,7 +197,7 @@ float SafeDivide(float a, float b)
 //CONVERSIONS - LUMA
 /////////////////////////////////////////////
 
-float sRGB_to_linear(float color)
+float sRGBToLinear(float color)
 {
     const float a = 0.055f;
 
@@ -210,15 +214,15 @@ float sRGB_to_linear(float color)
     return color;
 }
 
-float3 sRGB_to_linear(float3 colour)
+float3 sRGBToLinear(float3 colour)
 {
     return float3(
-		sRGB_to_linear(colour.r),
-		sRGB_to_linear(colour.g),
-		sRGB_to_linear(colour.b));
+		sRGBToLinear(colour.r),
+		sRGBToLinear(colour.g),
+		sRGBToLinear(colour.b));
 }
 
-float linear_to_sRGB(float channel)
+float LinearTosRGB(float channel)
 {
 	if (channel <= 0.0031308f)
 	{
@@ -231,12 +235,12 @@ float linear_to_sRGB(float channel)
 	return channel;
 }
 
-float3 linear_to_sRGB(float3 Color)
+float3 LinearTosRGB(float3 Color)
 {
-    return float3(linear_to_sRGB(Color.r), linear_to_sRGB(Color.g), linear_to_sRGB(Color.b));
+    return float3(LinearTosRGB(Color.r), LinearTosRGB(Color.g), LinearTosRGB(Color.b));
 }
 
-float3 linear_to_PQ(float3 linearCol)
+float3 LinearToPQ(float3 linearCol)
 {
     linearCol /= PQMaxWhitePoint;
 	
@@ -248,7 +252,7 @@ float3 linear_to_PQ(float3 linearCol)
     return pq;
 }
 
-float3 PQ_to_linear(float3 ST2084)
+float3 PQToLinear(float3 ST2084)
 {
     float3 colToPow = pow(ST2084, 1.0f / PQ_constant_M);
     float3 numerator = max(colToPow - PQ_constant_C1, 0.f);
@@ -260,9 +264,15 @@ float3 PQ_to_linear(float3 ST2084)
     return linearColor;
 }
 
-float average(float3 vColor)
+float RangeCompressPow(float x, float Pow)
 {
-    return dot(vColor, float3(1.f / 3.f, 1.f / 3.f, 1.f / 3.f));
+    return 1.0 - pow(exp(-x), Pow);
+}
+
+float LumaCompress(float val, float MaxValue, float ShoulderStart, float Pow)
+{
+    float v2 = ShoulderStart + (MaxValue - ShoulderStart) * RangeCompressPow((val - ShoulderStart) / (MaxValue - ShoulderStart), Pow);
+    return val <= ShoulderStart ? val : v2;
 }
 
 /////////////////////////////////////////////
@@ -444,6 +454,21 @@ float4 GetScreenParams()
 	return float4(GetResolution(), GetPixelSize());
 }
 
+float AngleBetween(float2 v1, float2 v2)
+{
+    return acos(dot(normalize(v1), normalize(v2)));
+}
+
+float AverageValue(float3 Color)
+{
+    return dot(Color, float3(1.f / 3.f, 1.f / 3.f, 1.f / 3.f));
+}
+
+float2 ProjectOnto(float2 a, float2 b)
+{
+    return dot(a, b) / dot(b, b) * b;
+}
+
 /////////////////////////////////////////////
 //MISC - BLURS
 /////////////////////////////////////////////
@@ -537,7 +562,7 @@ float GetLinearizedDepth(sampler depthSampler, float2 texcoord)
 //SATURATION - CONVERSIONS
 /////////////////////////////////////////////
 
-float hue2rgb(float p, float q, float t)
+float HuetoRGB(float p, float q, float t)
 {
     if (t < 0.0f) t += 1.0f;
     if (t > 1.0f) t -= 1.0f;
@@ -587,9 +612,9 @@ float3 HSLtoRGB(float3 hsl)
     {
         float q = l < 0.5f ? l * (1.0f + s) : l + s - l * s;
         float p = 2.0f * l - q;
-        r = hue2rgb(p, q, h + 1.0f / 3.0f);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1.0f / 3.0f);
+        r = HuetoRGB(p, q, h + 1.0f / 3.0f);
+        g = HuetoRGB(p, q, h);
+        b = HuetoRGB(p, q, h - 1.0f / 3.0f);
     }
 
     return float3(r, g, b);
@@ -666,14 +691,14 @@ float3 YUVtoRGB(float3 yuv)
 //SATURATION - FUNCTIONS
 /////////////////////////////////////////////
 
-float luminance(float3 color, float3 lumCoeff)
+float Luminance(float3 color, float3 lumCoeff)
 {
     return dot(color, lumCoeff);
 }
 
 float3 LumaSaturation(float3 color, float amount)
 {
-    float luminanceHDR = luminance(color, lumCoeffHDR);
+    float luminanceHDR = Luminance(color, lumCoeffHDR);
     return lerp(luminanceHDR, color, amount);
 }
 
@@ -733,6 +758,32 @@ float3 ExtendedSaturation(float3 color, float amount)
     return result;
 }
 **/
+
+float3 ExpandGamut(float3 HDRColor, float ExpandGamut)
+{
+    const float3x3 sRGB_2_AP1 = mul(XYZ_2_AP1_MAT, mul(D65_2_D60_CAT, sRGB_2_XYZ_MAT));
+    const float3x3 AP1_2_sRGB = mul(XYZ_2_sRGB_MAT, mul(D60_2_D65_CAT, AP1_2_XYZ_MAT));
+    const float3x3 Wide_2_AP1 = mul(XYZ_2_AP1_MAT, Wide_2_XYZ_MAT);
+    const float3x3 ExpandMat = mul(Wide_2_AP1, AP1_2_sRGB);
+
+    float3 ColorAP1 = mul(sRGB_2_AP1, HDRColor);
+
+    float LumaAP1 = dot(ColorAP1, AP1_RGB2Y);
+    if (LumaAP1 <= 0.f)
+    {
+        return HDRColor;
+    }
+    float3 ChromaAP1 = ColorAP1 / LumaAP1;
+
+    float ChromaDistSqr = dot(ChromaAP1 - 1, ChromaAP1 - 1);
+    float ExpandAmount = (1 - exp2(-4 * ChromaDistSqr)) * (1 - exp2(-4 * ExpandGamut * LumaAP1 * LumaAP1));
+
+	float3 ColorExpand = mul(ExpandMat, mul(LumaAP1, ChromaAP1));
+	ColorAP1 = lerp(ColorAP1, ColorExpand, ExpandAmount);
+
+    HDRColor = mul(AP1_2_sRGB, ColorAP1);
+    return HDRColor;
+}
 
 /////////////////////////////////////////////
 //TMOs
