@@ -18,6 +18,7 @@ static const int
 	Average = 4,
 	Max = 5;
 
+// UI
 uniform int UI_SATURATION_METHOD
 <
 	ui_label = "Method";

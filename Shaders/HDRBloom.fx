@@ -9,6 +9,7 @@
 #include "ReShade.fxh"
 #include "HDRShadersFunctions.fxh"
 
+// Defines
 #ifndef REMOVE_SDR_VALUES
 #define REMOVE_SDR_VALUES 1
 #endif
@@ -32,7 +33,6 @@
 namespace HDRShaders
 {
 
-// Defines
 static const int 
 	Additive = 0,
 	Overlay = 1;
