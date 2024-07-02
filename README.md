@@ -20,7 +20,7 @@ This is something that I've been experimenting a lot before I even had a HDR cap
 3: [ReshadeMotionEstimation](https://github.com/JakobPCoder/ReshadeMotionEstimation)
 
 ### Features:
-- Linear motion blur with optional blue noise slider that activates when blur gets too extreme to show artifacts
+- Linear motion blur with optional Blue Noise slider that activates when blur gets too extreme, hidding artifacts from under sampling
 - Support for SDR, HDR10 and scRGB
 - Variable samples quality, you can tune the quality however you want
 - Optional fake gain option to increase highlights brightness, as well as linear conversion to bring up more highlights
