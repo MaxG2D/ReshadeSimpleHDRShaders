@@ -11,7 +11,7 @@ This repo tries something else. It's 2 main focus points are:
 # Currently available shaders:
 
 
-# ----------------------------  HDR Motion Blur  ----------------------------
+# ----------------------  HDR Motion Blur  ----------------------
 
 
 This is something that I've been experimenting a lot before I even had a HDR capable TV, so it has a lot of legacy SDR support. It's feature rich to enhance the contrast of the blur, but if output is pure, untonemapped HDR color, it shouldn't need any tweaking, giving nice, bright highlights out of the box. Otherwise, it might a good idea to use a bit of fake gain function, or linear conversion.
@@ -33,7 +33,7 @@ This is something that I've been experimenting a lot before I even had a HDR cap
 ----------
 
 
-# ----------------------------  HDR Saturation  -----------------------------
+# ----------------------  HDR Saturation  -----------------------
 
 
 I love Pumbo's AdvancedAutoHDR shader with it's saturation adjustments, but I want something that is more flexible, and something that will actually prevent color from going into invalid space.
@@ -47,7 +47,7 @@ This shader is best used as a subtle sublement to HDR games that output only rec
 ----------
 
 
-# -------------------------------  HDR Bloom  -------------------------------
+# ------------------------  HDR Bloom  --------------------------
 
 
 Based on awesome Luluco250's [MagicHDR shader](https://github.com/luluco250/FXShaders/blob/master/Shaders/MagicHDR.fx), I've made my own take on  fully HDR-Compatible bloom shader.
