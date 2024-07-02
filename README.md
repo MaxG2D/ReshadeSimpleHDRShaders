@@ -72,6 +72,7 @@ Highly performant, with very wide, realistic blur, coupled with plethora of feat
 - Option to inverse tonemap input to further increase the range of values, useful for oldschool pure LDR games
 - Plenty of basic customization, like bloom amount, bloom texture brightness, saturation, bluring range, quality, etc
 - Option to properly remove SDR range from the input, to make sure bloom is not overly "hazy" (for obvious reasons, it only works in HDR)
+- Blend bloom either "additively" (legacy) or using "overlay" (physically correct) way
 - Variable downsampling and gaussian blur samples quality
 - Debug option to show bloom texture only, which helps immensly in tweaking the values
 ----------
