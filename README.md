@@ -55,11 +55,11 @@ This shader is best used as a subtle sublement to HDR games that output only rec
 From left to right: Bloom off, Bloom on, Bloom debug view)
 
 <p align="center" width="100%">
-<img width="33%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/59189fdf-df4f-4547-b8b3-eb092271c030">
+<img width="30%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/59189fdf-df4f-4547-b8b3-eb092271c030">
 
-<img width="33%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/553592f6-8f26-4c23-9585-f29337ecb92e">
+<img width="30%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/553592f6-8f26-4c23-9585-f29337ecb92e">
 
-<img width="33%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/5302b73b-2312-49ff-a99a-e01e06924033">
+<img width="30%" src="https://github.com/MaxG2D/ReshadeSimpleHDRShaders/assets/88550439/5302b73b-2312-49ff-a99a-e01e06924033">
 </p>
 
 Based on awesome Luluco250's [MagicHDR shader](https://github.com/luluco250/FXShaders/blob/master/Shaders/MagicHDR.fx), I've made my own take on  fully HDR-Compatible bloom shader.
