@@ -27,6 +27,19 @@
 #define VELOCITY_SCALE 50.0
 #define HALF_SAMPLES (UI_BLUR_SAMPLES_MAX / 2)
 
+/**
+uniform float HDR_MAX_NITS
+<
+  ui_label = "HDR display peak brightness (max nits)";
+  ui_tooltip = "Set it equal or higher the Auto HDR max brightness to avoid double tonemapping";
+  ui_category = "HDR tonemapping";
+  ui_type = "drag";
+  ui_min = sRGB_max_nits;
+  ui_max = 10000.f;
+  ui_step = 1.f;
+> = 750.f;
+**/
+
 // UI
 uniform int README
 <
@@ -235,29 +248,32 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
     float SampleDistVector = dot(SampleDist, 1.0);
     float4 SummedSamples = 0;
     float4 Sampled = 0;
+    //Sampled = tex2D(SamplerColor, texcoord);
     float4 Color = tex2D(SamplerColor, texcoord);
     float2 NoiseOffset = 0;
     if (abs(SampleDistVector) > 0.001)
     {
         NoiseOffset = BlueNoise(texcoord - SampleDist * (0 - HALF_SAMPLES)) * 0.001);
-    }
-    
+    }    
     // Blur Loop
     for (int s = 0; s < UI_BLUR_SAMPLES_MAX; s++)
     {
         Sampled = tex2D(SamplerColor, texcoord - SampleDist * (s - HALF_SAMPLES) + (NoiseOffset * UI_BLUR_BLUE_NOISE));
-        
+    	
 		// HDR10 BT.2020 PQ
-        if (inColorSpace == 2) 
-        {
-            Sampled.rgb = PQToLinear(Sampled.rgb);
-            Sampled.rgb = BT2020_2_BT709(Sampled.rgb);
-        }
-        
-        #if LINEAR_CONVERSION
-            Sampled.rgb = sRGB_to_linear(Sampled.rgb);            
-        #endif
-        
+		[branch]
+	    if (inColorSpace == 2) 
+	    {
+	    	Sampled.rgb = clamp(Sampled.rgb, -FLT16_MAX, FLT16_MAX);
+	    	//Sampled.rgb = BT2020_2_BT709(Sampled.rgb);
+	        Sampled.rgb = PQToLinear(Sampled.rgb);            
+	        //Sampled.rgb = min(max(Sampled.rgb, -PQMaxWhitePoint),PQMaxWhitePoint);
+	    }
+	    
+	    #if LINEAR_CONVERSION
+	        Sampled.rgb = sRGBToLinear(Sampled.rgb);            
+	    #endif
+	    
         SummedSamples += Sampled / UI_BLUR_SAMPLES_MAX;
         Color.rgb = max(Color.rgb, Sampled.rgb);
     }
@@ -285,8 +301,17 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 		
 		[branch]
 		#if LINEAR_CONVERSION
-			Finalcolor.rgb = linear_to_sRGB(Finalcolor.rgb);
+			Finalcolor.rgb = LinearTosRGB(Finalcolor.rgb);
 		#endif
+
+		// HDR10 BT.2020 PQ
+	    if (inColorSpace == 2) 
+		    {
+		    	Finalcolor.rgb = fixNAN(Finalcolor.rgb);
+				//Finalcolor.rgb = DisplayMapColor(Finalcolor.rgb, luminance, HDR_MAX_NITS);		       
+				//Finalcolor.rgb = BT709_2_BT2020(Finalcolor.rgb);
+				Finalcolor.rgb = LinearToPQ(Finalcolor.rgb);		       
+		    }
 		
 		// SDR
 		if (inColorSpace == 0) 
@@ -294,12 +319,6 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 				Finalcolor *= 1.0 / max(dot(SummedSamples.rgb, lumCoeffsRGB), 1.0);
 				clamp(Finalcolor, 0.0, 1.0);
 			}
-		// HDR10 BT.2020 PQ
-	    if (inColorSpace == 2) 
-		    {
-		        Finalcolor.rgb = BT709_2_BT2020(Finalcolor.rgb);
-		        Finalcolor.rgb = LinearToPQ(Finalcolor.rgb);
-		    }
 	
 		#if DEPTH_ENABLE
 		Finalcolor = UI_SHOW_DEPTH

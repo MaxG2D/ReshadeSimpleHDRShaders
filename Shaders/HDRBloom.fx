@@ -11,7 +11,7 @@
 
 // Defines
 #ifndef REMOVE_SDR_VALUES
-#define REMOVE_SDR_VALUES 1
+#define REMOVE_SDR_VALUES 0
 #endif
 
 #ifndef ADDITIONAL_BLUR_PASS
@@ -226,12 +226,13 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
     // HDR10 BT.2020 PQ
 	if (inColorSpace == 2)
     {
+    	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
+        //color.rgb = BT2020_2_BT709(color.rgb);
         color.rgb = PQToLinear(color.rgb);
-        color.rgb = BT2020_2_BT709(color.rgb);
     }
 
 	#if LINEAR_CONVERSION
-		color.rgb = sRGB_to_linear(color.rgb);			
+		color.rgb = sRGBToLinear(color.rgb);			
 	#endif
 
 	// Inv Tonemapping
@@ -253,7 +254,6 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		}
 	#endif
 	
-
 	// Bloom Brightness
 	color.rgb *= UI_BLOOM_BRIGHTNESS;
 
@@ -373,13 +373,18 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
     //bloom /= 3.0;
     	
 	uint inColorSpace = UI_IN_COLOR_SPACE;
+	
 	// HDR10 BT.2020 PQ
+	
     if (inColorSpace == 2) 
 	    {
-	        bloom.rgb = BT709_2_BT2020(bloom.rgb);
-	        bloom.rgb = LinearToPQ(bloom.rgb);
+	    	bloom.rgb = fixNAN(bloom.rgb);
+			//bloom.rgb = DisplayMapColor(bloom.rgb, luminance, HDR_MAX_NITS);		       
+			//bloom.rgb = BT709_2_BT2020(bloom.rgb);
+			bloom.rgb = LinearToPQ(bloom.rgb);
 	    }
-   
+	
+	
 	if (UI_BLOOM_BLENDING_TYPE == Overlay)	
 		{
 		finalcolor.rgb = UI_BLOOM_SHOW_DEBUG
@@ -397,7 +402,7 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	// SDR Clamp
 	if (inColorSpace == 0) 
 		{
-			finalcolor = saturate(finalcolor);
+			finalcolor = clamp(finalcolor, 0.0, 1.0);
 		}
     return finalcolor;
 	

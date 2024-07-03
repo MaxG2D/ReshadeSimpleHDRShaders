@@ -37,7 +37,6 @@
 #endif
 
 #define PI 3.1415927410125732421875f
-#define THRESHOLD_ANGLE (PI / 4.0)  // Adjust this threshold as needed
 
 #define UINT_MAX 4294967295
 #define  INT_MAX 2147483647
@@ -197,6 +196,11 @@ float SafeDivide(float a, float b)
 //CONVERSIONS - LUMA
 /////////////////////////////////////////////
 
+float Luminance(float3 color, float3 lumCoeff)
+{
+    return dot(color, lumCoeff);
+}
+
 float sRGBToLinear(float color)
 {
     const float a = 0.055f;
@@ -242,7 +246,7 @@ float3 LinearTosRGB(float3 Color)
 
 float3 LinearToPQ(float3 linearCol)
 {
-    linearCol /= PQMaxWhitePoint;
+    linearCol /= HDR10_max_nits;
 	
     float3 colToPow = pow(linearCol, PQ_constant_N);
     float3 numerator = PQ_constant_C1 + PQ_constant_C2 * colToPow;
@@ -257,9 +261,10 @@ float3 PQToLinear(float3 ST2084)
     float3 colToPow = pow(ST2084, 1.0f / PQ_constant_M);
     float3 numerator = max(colToPow - PQ_constant_C1, 0.f);
     float3 denominator = PQ_constant_C2 - (PQ_constant_C3 * colToPow);
+    //denominator = max(denominator, 1e-10f);
     float3 linearColor = pow(numerator / denominator, 1.f / PQ_constant_N);
 
-    linearColor *= PQMaxWhitePoint;
+    linearColor *= HDR10_max_nits;
 
     return linearColor;
 }
@@ -273,6 +278,14 @@ float LumaCompress(float val, float MaxValue, float ShoulderStart, float Pow)
 {
     float v2 = ShoulderStart + (MaxValue - ShoulderStart) * RangeCompressPow((val - ShoulderStart) / (MaxValue - ShoulderStart), Pow);
     return val <= ShoulderStart ? val : v2;
+}
+
+float3 DisplayMapColor (float3 color, float luma, float HdrMaxNits) 
+{
+	luma = Luminance(color, lumCoeffHDR);
+	float maxOutputLuminance = HdrMaxNits / sRGB_max_nits;
+	float compressedHDRLuminance = LumaCompress(luma, maxOutputLuminance, maxOutputLuminance, 1);
+	return color * compressedHDRLuminance / luma;
 }
 
 /////////////////////////////////////////////
@@ -291,6 +304,10 @@ static const float3x3 XYZ_2_AP1_MAT = float3x3(
 	1.6410233797, -0.3248032942, -0.2364246952,
 	-0.6636628587, 1.6153315917, 0.0167563477,
 	0.0117218943, -0.0082844420, 0.9883948585);
+static const float3x3 AP1_2_XYZ_MAT = float3x3(
+	0.6624541811, 0.1340042065, 0.1561876870,
+	0.2722287168, 0.6740817658, 0.0536895174,
+	-0.0055746495, 0.0040607335, 1.0103391003);
 static const float3x3 D65_2_D60_CAT = float3x3(
 	1.01303, 0.00610531, -0.014971,
 	0.00769823, 0.998165, -0.00503203,
@@ -299,10 +316,6 @@ static const float3x3 D60_2_D65_CAT = float3x3(
 	0.987224, -0.00611327, 0.0159533,
 	-0.00759836, 1.00186, 0.00533002,
 	0.00307257, -0.00509595, 1.08168);
-static const float3x3 AP1_2_XYZ_MAT = float3x3(
-	0.6624541811, 0.1340042065, 0.1561876870,
-	0.2722287168, 0.6740817658, 0.0536895174,
-	-0.0055746495, 0.0040607335, 1.0103391003);
 static const float3 AP1_RGB2Y = float3(
 	0.2722287168,
 	0.6740817658, 
@@ -348,14 +361,53 @@ static const float3x3 BT2020_2_AP1_MAT = float3x3(
 //CONVERSIONS - CHROMA (FUNCTIONS)
 /////////////////////////////////////////////
 
+float3 XYZ_2_sRGB_MAT(float3 color)
+{
+    return mul(XYZ_2_sRGB_MAT, color);
+}
+float3 sRGB_2_XYZ_MAT(float3 color)
+{
+    return mul(sRGB_2_XYZ_MAT, color);
+}
+
+
+float3 XYZ_2_AP1_MAT(float3 color)
+{
+    return mul(XYZ_2_AP1_MAT, color);
+}
+float3 AP1_2_XYZ_MAT(float3 color)
+{
+    return mul(AP1_2_XYZ_MAT, color);
+}
+
+
 float3 BT709_2_BT2020(float3 color)
 {
     return mul(BT709_2_BT2020, color);
 }
-
 float3 BT2020_2_BT709(float3 color)
 {
     return mul(BT2020_2_BT709, color);
+}
+
+
+float3 XYZ_2_BT2020_MAT(float3 color)
+{
+    return mul(XYZ_2_BT2020_MAT, color);
+}
+float3 BT2020_2_XYZ_MAT(float3 color)
+{
+    return mul(BT2020_2_XYZ_MAT, color);
+}
+
+
+float3 AP1_2_BT2020_MAT(float3 color)
+{
+    return mul(AP1_2_BT2020_MAT, color);
+}
+float3 BT2020_2_AP1_MAT(float3 color)
+{
+    return mul(BT2020_2_AP1_MAT, color);
 }
 
 /////////////////////////////////////////////
@@ -690,11 +742,6 @@ float3 YUVtoRGB(float3 yuv)
 /////////////////////////////////////////////
 //SATURATION - FUNCTIONS
 /////////////////////////////////////////////
-
-float Luminance(float3 color, float3 lumCoeff)
-{
-    return dot(color, lumCoeff);
-}
 
 float3 LumaSaturation(float3 color, float amount)
 {
