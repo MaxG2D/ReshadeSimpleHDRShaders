@@ -1,4 +1,25 @@
-                    GNU GENERAL PUBLIC LICENSE
+This package of shaders uses derivative work from the following authors. No harm intendeed,
+and so, if any of the authors wishes his work to be removed or altered, please, contact me,
+and I'll oblige in resolving the issue:
+
+Original Motion Blur code by Jakob Wapenhensch 
+(https://github.com/JakobPCoder/ReshadeMotionBlur)
+Copyright (c) 2022 Jakob Wapenhensch released under CC BY-NC 4.0 license
+
+Saturation shader is aid by Filippo Tarpini code 
+(https://github.com/Filoppi/PumboAutoHDR)
+Copyright (c) 2023 Filippo Tarpini released under MIT license
+
+Bloom shader is heavily inspired by Luluco250's MagicHDR shader 
+(https://github.com/luluco250/FXShaders/blob/master/Shaders/MagicHDR.fx)
+Copyright (c) 2017 Lucas Melo released under MIT license
+
+Some of the helper functions are used from the EndlesslyFlowering, also known as Lilium
+(https://github.com/EndlesslyFlowering/ReShade_HDR_shaders)
+
+Everything else is attributed to the author, released under the following GPL-3.0 license:
+
+                   GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
  Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
