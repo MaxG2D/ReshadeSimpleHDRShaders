@@ -165,7 +165,7 @@ uniform float UI_GAIN_THRESHOLD <
 	ui_tooltip =
 	"Pixels with luminance above this value will be boosted.";
 	ui_category = "HDR Simulation";
-> = 0.75;
+> = 0.90;
 
 uniform float UI_GAIN_THRESHOLD_SMOOTH <
 	ui_label = "Fake Gain Smoothness";
@@ -176,7 +176,7 @@ uniform float UI_GAIN_THRESHOLD_SMOOTH <
 	ui_tooltip =
 	"Thresholding that smoothly interpolates between max and min value of luminance.";
 	ui_category = "HDR Simulation";
-> = 0.75;
+> = 0.10;
 #endif
 
 //  Textures & Samplers
@@ -248,7 +248,6 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 	float SampleDistVector = dot(SampleDist, 1.0);
 	float4 SummedSamples = 0;
 	float4 Sampled = 0;
-	//Sampled = tex2D(SamplerColor, texcoord);
 	float4 Color = tex2D(SamplerColor, texcoord);
 	float2 NoiseOffset = 0;
 	if (abs(SampleDistVector) > 0.001)

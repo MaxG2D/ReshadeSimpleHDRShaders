@@ -15,7 +15,8 @@ static const int
 	YUV = 1,
 	Average = 2,
 	Vibrance = 3,
-	Adaptive = 4;
+	Adaptive = 4,
+	OKLAB = 5;
 
 // UI
 uniform int UI_SATURATION_METHOD
@@ -25,16 +26,16 @@ uniform int UI_SATURATION_METHOD
 		"Specify which saturation function is used"
 		"\n""\n" "Default: HSV";
 	ui_type = "combo";
-	ui_items = "Luma\0YUV\0Average\0Vibrance\0Adaptive\0";
+	ui_items = "Luma\0YUV\0Average\0Vibrance\0Adaptive\0OKLAB\0";
 > = Adaptive;
 
 uniform float UI_SATURATION_AMOUNT <
-	ui_min = -1.0; ui_max = 5.0;
+	ui_min = -1.0; ui_max = 10.0;
 	ui_label = "Amount";
 	ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 2.0;
+> = 5.0;
 
 uniform float UI_SATURATION_LIMIT <
 	ui_min = 0.0; ui_max = 1.0;
@@ -42,15 +43,23 @@ uniform float UI_SATURATION_LIMIT <
 	ui_tooltip = "Switch between global or highlight only saturation";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 1.0;
+> = 0.75;
+
+uniform float UI_SATURATION_CLIPPING_LIMIT <
+	ui_min = 0.0; ui_max = 1.0;
+	ui_label = "Detail Preservation";
+	ui_tooltip = "Avoid clipping out highlight color details";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 0.83;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION <
-	ui_min = 0.0; ui_max = 100.0;
+	ui_min = 0.01; ui_max = 100.0;
 	ui_label = "Gamut Expansion";
 	ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 20.0;
+> = 50.0;
 
 float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {
@@ -58,82 +67,70 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 	color = clamp(color, -FLT16_MAX, FLT16_MAX);
 	if (Luminance(color, lumCoeffHDR) < 0.f)
 	{
-	    color = 0.f;
+		color = 0.f;
 	}
-	const float3 ExtraColor = color - saturate(color);
+	float3 ExtraColor = color - saturate(color);
 	color = saturate(color);
 	color += ExtraColor;
-
 	float3 PreProcessedColor = color;
 	float HDRLuminance = Luminance(PreProcessedColor, lumCoeffHDR);
 
+	float BaseSaturationRatio = 1.0 + UI_SATURATION_AMOUNT;
+	float SaturationClippingFactor = 1.0 - saturate(HDRLuminance) * UI_SATURATION_CLIPPING_LIMIT;
+	float AdjustedSaturationRatio = BaseSaturationRatio * SaturationClippingFactor;
+
+	float RatioBlend;
 	if (UI_SATURATION_AMOUNT > 0.0)
 	{
-	    const float OklabLightness = RGBToOKLab(PreProcessedColor)[0];
+		const float OklabLightness = RGBToOKLab(PreProcessedColor)[0];
 		const float HighlightSaturationRatio = (OklabLightness + (1.f / 48.f)) / (48.f / 1.f);
 		const float MidSaturationRatio = OklabLightness;
-		float ratio_blend = lerp(MidSaturationRatio, HighlightSaturationRatio, UI_SATURATION_LIMIT);
-
-		if (UI_SATURATION_METHOD == Luma)
-		{
-			PreProcessedColor = LumaSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
-		}
-		else if (UI_SATURATION_METHOD == YUV)
-		{
-			PreProcessedColor = YUVSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
-		}
-		else if (UI_SATURATION_METHOD == Average)
-		{
-			PreProcessedColor = AverageSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
-		}
-		else if (UI_SATURATION_METHOD == Vibrance)
-		{
-			PreProcessedColor = VibranceSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
-		}
-		else if (UI_SATURATION_METHOD == Adaptive)
-		{
-			PreProcessedColor = AdaptiveSaturation(PreProcessedColor, lerp(1.f, UI_SATURATION_AMOUNT + 1, (ratio_blend)));
-		}
+		RatioBlend = lerp(MidSaturationRatio, HighlightSaturationRatio, UI_SATURATION_LIMIT);
+	}
+	else
+	{
+		RatioBlend = 1.0;
 	}
 
-	if (UI_SATURATION_AMOUNT < 0.0)
+	float AdjustedSaturation = lerp(1.f, AdjustedSaturationRatio, RatioBlend);
+
+	if (UI_SATURATION_METHOD == Luma)
 	{
-		if (UI_SATURATION_METHOD == Luma)
-		{
-			PreProcessedColor = LumaSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
-		}
-		else if (UI_SATURATION_METHOD == YUV)
-		{
-			PreProcessedColor = YUVSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
-		}
-		else if (UI_SATURATION_METHOD == Average)
-		{
-			PreProcessedColor = AverageSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
-		}
-		else if (UI_SATURATION_METHOD == Vibrance)
-		{
-			PreProcessedColor = VibranceSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
-		}
-		else if (UI_SATURATION_METHOD == Adaptive)
-		{
-			PreProcessedColor = AdaptiveSaturation(PreProcessedColor, saturate(1.0 + UI_SATURATION_AMOUNT));
-		}
+		PreProcessedColor = LumaSaturation(PreProcessedColor, AdjustedSaturation);
+	}
+	else if (UI_SATURATION_METHOD == YUV)
+	{
+		PreProcessedColor = YUVSaturation(PreProcessedColor, AdjustedSaturation);
+	}
+	else if (UI_SATURATION_METHOD == Average)
+	{
+		PreProcessedColor = AverageSaturation(PreProcessedColor, AdjustedSaturation);
+	}
+	else if (UI_SATURATION_METHOD == Vibrance)
+	{
+		PreProcessedColor = VibranceSaturation(PreProcessedColor, AdjustedSaturation);
+	}
+	else if (UI_SATURATION_METHOD == Adaptive)
+	{
+		PreProcessedColor = AdaptiveSaturation(PreProcessedColor, AdjustedSaturation);
+	}
+	else if (UI_SATURATION_METHOD == OKLAB)
+	{
+		PreProcessedColor = OKLABSaturation(PreProcessedColor, AdjustedSaturation);
 	}
 
 	if (UI_SATURATION_GAMUT_EXPANSION > 0.f)
 	{
-		PreProcessedColor = ExpandGamut(PreProcessedColor, (UI_SATURATION_GAMUT_EXPANSION * 0.01));
+		PreProcessedColor = ExpandGamut(PreProcessedColor, UI_SATURATION_GAMUT_EXPANSION * 0.01);
 		PreProcessedColor /= 125.f;
-	  PreProcessedColor = BT709_2_BT2020(PreProcessedColor);
-	  PreProcessedColor = saturate(PreProcessedColor);
-	  PreProcessedColor = BT2020_2_BT709(PreProcessedColor) * 125.f;
+		PreProcessedColor = BT709_2_BT2020(PreProcessedColor);
+		PreProcessedColor = max(PreProcessedColor, 0.f);
+		PreProcessedColor = BT2020_2_BT709(PreProcessedColor) * 125.f;
 	}
-
-	float3 FinalColor = PreProcessedColor;
-	float3 XYZColor = mul(sRGB_2_XYZ_MAT, FinalColor);
+	float3 XYZColor = mul(sRGB_2_XYZ_MAT, PreProcessedColor);
 	XYZColor = max(XYZColor, 0.f);
-	FinalColor = mul(XYZ_2_sRGB_MAT, XYZColor);
-	//FinalColor = fixNAN(FinalColor);
+	float3 FinalColor = mul(XYZ_2_sRGB_MAT, XYZColor);
+
 	return FinalColor;
 }
 

@@ -17,9 +17,9 @@
 /////////////////////////////////////////////
 
 // These are from the "color_space" enum in ReShade
-#define RESHADE_COLOR_SPACE_SDR        0
-#define RESHADE_COLOR_SPACE_SCRGB       1
-#define RESHADE_COLOR_SPACE_BT2020_PQ   2
+#define RESHADE_COLOR_SPACE_SDR        	0
+#define RESHADE_COLOR_SPACE_SCRGB       	1
+#define RESHADE_COLOR_SPACE_BT2020_PQ   	2
 
 // This uses the enum values defined in "IN_COLOR_SPACE"
 #define DEFAULT_COLOR_SPACE 1
@@ -63,10 +63,10 @@ uniform bool overlay_open < source = "overlay_open"; >;
 /////////////////////////////////////////////
 
 #define NoiseScale float2(12.9898, 78.2330)		//12.9898, 78.2330
-#define NoiseStrength (20000)	   	//43758.5453
-#define BlendFactor (1/9.0)				//0.5/9.0
-#define ScaleFactor (1.5)					//2.1
-#define BiasFactor (0.3) 					//0.5
+#define NoiseStrength (20000)	   					//43758.5453
+#define BlendFactor (1/9.0)						//0.5/9.0
+#define ScaleFactor (1.5)							//2.1
+#define BiasFactor (0.3) 							//0.5
 
 // Blue Noise: https://www.shadertoy.com/view/7sGBzW
 #define HASH(p) (sin(dot(p, NoiseScale + frametime)) * NoiseStrength - floor(sin(dot(p, NoiseScale + frametime)) * NoiseStrength))
@@ -218,12 +218,12 @@ float sRGBToLinear(float color)
 	return color;
 }
 
-float3 sRGBToLinear(float3 colour)
+float3 sRGBToLinear(float3 color)
 {
 	return float3(
-		sRGBToLinear(colour.r),
-		sRGBToLinear(colour.g),
-		sRGBToLinear(colour.b));
+		sRGBToLinear(color.r),
+		sRGBToLinear(color.g),
+		sRGBToLinear(color.b));
 }
 
 float LinearTosRGB(float channel)
@@ -875,6 +875,15 @@ float3 AdaptiveSaturation(float3 color, float amount)
 	return lerp(gray, color, factor);
 }
 
+float3 OKLABSaturation(float3 color, float amount)
+{
+	float3 oklab = RGBToOKLab(color);
+	float3 oklch = oklab_to_oklch(oklab);
+	oklch.y *= amount;
+	oklab = oklch_to_oklab(oklch);
+	return OKLabToRGB(oklab);
+}
+
 float3 ExpandGamut(float3 HDRColor, float ExpandGamut)
 {
 	const float3x3 sRGB_2_AP1 = mul(XYZ_2_AP1_MAT, mul(D65_2_D60_CAT, sRGB_2_XYZ_MAT));
@@ -938,12 +947,32 @@ float3 ACES_Inverse(float3 color)
 }
 
 //Reinhard
-float3 Reinhard(float3 color)
-{
-	return (color * (1.0 + color / (HDR10_max_nits * HDR10_max_nits))) / (1.0 + color);
-}
-
 float3 Reinhard_Inverse(float3 color)
 {
 	return (color * (1.0 + color)) / (1.0 + color / (HDR10_max_nits * HDR10_max_nits));
+}
+
+//Hybrid Log-Gamma
+float3 HLG_Inverse(float3 color)
+{
+	float a = 0.17883277;
+	float b = 0.28466892;
+	float c = 0.55991073;
+
+	float3 x = color;
+	float3 y = pow((a * x + b), 1.0 / c);
+
+	return y;
+}
+
+//BT2390
+float3 BT2390_Inverse(float3 color)
+{
+	float a = 0.17883277;
+	float b = 0.28466892;
+	float c = 0.55991073;
+
+	color = max(color, 0.0);
+	float3 x = color;
+	return (pow(x, 1.0/2.4) * (c * x + b) / (c * x + a));
 }

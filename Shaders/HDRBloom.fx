@@ -39,18 +39,17 @@ static const int
 
 static const int
 	None = 0,
-	ACES = 1,
-	Reinhard = 2;
+	Reinhard = 1;
 
 static const int2 DownsampleAmount = DOWNSAMPLE;
 
 // UI
 uniform uint UI_IN_COLOR_SPACE
 <
-	ui_label    = "Input Color Space";
-	ui_type     = "combo";
-	ui_items    = "SDR sRGB\0HDR scRGB\0HDR10 BT.2020 PQ\0";
-	ui_tooltip  = "Specify the input color space (Auto doesn't always work right).\nFor HDR, either pick scRGB or HDR10";
+	ui_label	= "Input Color Space";
+	ui_type		= "combo";
+	ui_items	= "SDR sRGB\0HDR scRGB\0HDR10 BT.2020 PQ\0";
+	ui_tooltip	= "Specify the input color space (Auto doesn't always work right).\nFor HDR, either pick scRGB or HDR10";
 	ui_category = "Calibration";
 > = DEFAULT_COLOR_SPACE;
 
@@ -87,7 +86,7 @@ uniform float UI_BLOOM_SATURATION
 		"\nDefault: 1.0";
 	ui_type = "slider";
 	ui_min = 0.0;
-	ui_max = 2.0;
+	ui_max = 10.0;
 > = 1.0;
 
 uniform int UI_SAMPLE_COUNT
@@ -111,7 +110,7 @@ uniform int UI_BLOOM_INV_TMO
 		"\n" "\n" "Default: None";
 	ui_category_closed = true;
 	ui_type = "combo";
-	ui_items = "None\0ACES\0Reinhard\0";
+	ui_items = "None\0Reinhard\0";
 > = None;
 
 uniform float UI_BLOOM_BLUR_SIZE
@@ -164,6 +163,15 @@ uniform bool UI_BLOOM_SHOW_DEBUG
 		"\n" "\n" "Default: Off";
 > = false;
 
+uniform bool UI_BLOOM_DEBUG_RAW
+<
+	ui_category = "Debug";
+	ui_label = "Bloom x Amount?";
+	ui_tooltip =
+		"Should the bloom texture be multiplied by amount before display or show the raw texture?"
+		"\n" "\n" "Default: On";
+> = true;
+
 // Textures
 texture ColorTex : COLOR;
 sampler SamplerColor
@@ -180,12 +188,12 @@ texture BloomCombinedTex
 };
 sampler BloomCombined
 {
-	    Texture = BloomCombinedTex;
-	    MinFilter = LINEAR;
-	    MagFilter = LINEAR;
-	    MipFilter = LINEAR;
-	    AddressU = Border;
-	    AddressV = Border;
+		Texture = BloomCombinedTex;
+		MinFilter = LINEAR;
+		MagFilter = LINEAR;
+		MipFilter = LINEAR;
+		AddressU = Border;
+		AddressV = Border;
 };
 
 #define DECLARE_BLOOM_TEXTURE(TexName, Downscale) \
@@ -221,7 +229,7 @@ sampler BloomCombined
 float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
 	float4 color = tex2D(SamplerColor, texcoord);
-
+	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
 	uint inColorSpace = UI_IN_COLOR_SPACE;
 	// HDR10 BT.2020 PQ
 	if (inColorSpace == 2)
@@ -230,6 +238,14 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		//color.rgb = BT2020_2_BT709(color.rgb);
 		color.rgb = PQToLinear(color.rgb);
 	}
+
+	// HDR Thresholding (ignoring 0.0-1.0 range)
+	#if REMOVE_SDR_VALUES
+		if (Luminance(color.rgb, lumCoeffHDR) < 1.f)
+		{
+			color.rgb = 0.f;
+		}
+	#endif
 
 	#if LINEAR_CONVERSION
 		color.rgb = sRGBToLinear(color.rgb);
@@ -240,26 +256,16 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		color.rgb = color.rgb;
 	else if (UI_BLOOM_INV_TMO == 1)
 	{
-		color.rgb = ACES_Inverse(color.rgb);
-		color.rgb *= mid_gray / AverageValue(ACES_Inverse(mid_gray));
-	}
-	else if (UI_BLOOM_INV_TMO == 2)
 		color.rgb = Reinhard_Inverse(color.rgb);
-
-	// HDR Thresholding (ignoring 0.0-1.0 range)
-	#if REMOVE_SDR_VALUES
-		if (Luminance(color.rgb, lumCoeffHDR) < 1.f)
-		{
-			color.rgb = 0.f;
-		}
-	#endif
+	}
 
 	// Bloom Brightness
 	color.rgb *= UI_BLOOM_BRIGHTNESS;
 
 	// Bloom Saturation
-	color.rgb = LumaSaturation(color.rgb, UI_BLOOM_SATURATION);
+	color.rgb = max(LumaSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
 
+	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
 	return color;
 }
 
@@ -269,35 +275,28 @@ float4 GaussianBlur(sampler SampledTexture, float2 TexCoord, float2 Direction, f
 	int kernelSize = 0;
 
 	// Kernel size and weights based on sample count
-	if (SampleCount == 0)
+	switch (SampleCount)
 	{
-		kernelSize = 5;
-		for (int i = 0; i < kernelSize; ++i)
-			weights[i] = Weights5[i];
-	}
-	else if (SampleCount == 1)
-	{
-		kernelSize = 7;
-		for (int i = 0; i < kernelSize; ++i)
-			weights[i] = Weights7[i];
-	}
-	else if (SampleCount == 2)
-	{
-		kernelSize = 11;
-		for (int i = 0; i < kernelSize; ++i)
-			weights[i] = Weights11[i];
-	}
-	else if (SampleCount == 3)
-	{
-		kernelSize = 13;
-		for (int i = 0; i < kernelSize; ++i)
-			weights[i] = Weights13[i];
-	}
-	else
-	{
-		kernelSize = 5;
-		for (int i = 0; i < kernelSize; ++i)
-			weights[i] = Weights5[i];
+		case 0:
+			kernelSize = 5;
+			for (int i = 0; i < kernelSize; ++i)
+				weights[i] = Weights5[i];
+			break;
+		case 1:
+			kernelSize = 7;
+			for (int i = 0; i < kernelSize; ++i)
+				weights[i] = Weights7[i];
+			break;
+		case 2:
+			kernelSize = 11;
+			for (int i = 0; i < kernelSize; ++i)
+				weights[i] = Weights11[i];
+			break;
+		case 3:
+			kernelSize = 13;
+			for (int i = 0; i < kernelSize; ++i)
+				weights[i] = Weights13[i];
+			break;
 	}
 
 	float4 color = 0.0;
@@ -305,8 +304,10 @@ float4 GaussianBlur(sampler SampledTexture, float2 TexCoord, float2 Direction, f
 
 	for (int i = 0; i < kernelSize; ++i)
 	{
-		float2 offset = Direction * GetPixelSize() * DownsampleAmount * (BlurSize / DownsampleAmount) * sqrt(2.0 * PI) * (i - halfSamples);
-		color += tex2D(SampledTexture, TexCoord - offset).rgba * weights[i].xxxx;
+		float2 offset = Direction * GetPixelSize() * DownsampleAmount *
+		(BlurSize / DownsampleAmount) * sqrt(2.0 * PI) * (i - halfSamples);
+
+		color += (tex2D(SampledTexture, TexCoord - offset).rgba * weights[i]);
 	}
 
 	return color;
@@ -377,25 +378,25 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	// HDR10 BT.2020 PQ
 
 	if (inColorSpace == 2)
-	    {
-	    	bloom.rgb = fixNAN(bloom.rgb);
+		{
+			bloom.rgb = fixNAN(bloom.rgb);
 			//bloom.rgb = DisplayMapColor(bloom.rgb, luminance, HDR_MAX_NITS);
 			//bloom.rgb = BT709_2_BT2020(bloom.rgb);
 			bloom.rgb = LinearToPQ(bloom.rgb);
-	    }
+		}
 
 
 	if (UI_BLOOM_BLENDING_TYPE == Overlay)
 		{
 		finalcolor.rgb = UI_BLOOM_SHOW_DEBUG
-			? bloom.rgb
+			? (UI_BLOOM_DEBUG_RAW ? bloom.rgb * UI_BLOOM_AMOUNT : bloom.rgb)
 			: lerp(finalcolor.rgb, bloom.rgb, log10(UI_BLOOM_AMOUNT + 1.0));
 		}
 
 	else if (UI_BLOOM_BLENDING_TYPE == Additive)
 		{
 		finalcolor.rgb = UI_BLOOM_SHOW_DEBUG
-			? bloom.rgb
+			? (UI_BLOOM_DEBUG_RAW ? bloom.rgb * UI_BLOOM_AMOUNT : bloom.rgb)
 			: finalcolor.rgb + (bloom.rgb * UI_BLOOM_AMOUNT);
 		}
 
