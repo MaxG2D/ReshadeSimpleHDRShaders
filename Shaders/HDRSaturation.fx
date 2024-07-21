@@ -27,7 +27,7 @@ uniform int UI_SATURATION_METHOD
 		"\n""\n" "Default: HSV";
 	ui_type = "combo";
 	ui_items = "Luma\0YUV\0Average\0Vibrance\0Adaptive\0OKLAB\0";
-> = Adaptive;
+> = OKLAB;
 
 uniform float UI_SATURATION_AMOUNT <
 	ui_min = -1.0; ui_max = 10.0;
@@ -35,7 +35,7 @@ uniform float UI_SATURATION_AMOUNT <
 	ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 5.0;
+> = 3.25;
 
 uniform float UI_SATURATION_LIMIT <
 	ui_min = 0.0; ui_max = 1.0;
@@ -51,15 +51,15 @@ uniform float UI_SATURATION_CLIPPING_LIMIT <
 	ui_tooltip = "Avoid clipping out highlight color details";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.83;
+> = 0.78;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION <
-	ui_min = 0.01; ui_max = 100.0;
+	ui_min = 0.0; ui_max = 1000.0;
 	ui_label = "Gamut Expansion";
 	ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
-	ui_step = 0.01;
+	ui_step = 1;
 	ui_type = "slider";
-> = 50.0;
+> = 500.0;
 
 float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {
