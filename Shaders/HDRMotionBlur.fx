@@ -179,18 +179,14 @@ uniform float UI_GAIN_THRESHOLD_SMOOTH <
 > = 0.10;
 #endif
 
-//  Textures & Samplers
-texture ColorTex : COLOR;
-sampler SamplerColor
+namespace HDRShaders
 {
-	Texture = ColorTex;
-	AddressU = Clamp; AddressV = Clamp; MipFilter = Linear; MinFilter = Linear; MagFilter = Linear;
-};
 
-texture DepthTex : DEPTH;
+//  Textures & Samplers
+texture DepthBufferTexture : DEPTH;
 sampler SamplerDepth
 {
-	Texture = DepthTex;
+	Texture = DepthBufferTexture;
 };
 
 texture DepthProcessedTex
@@ -204,6 +200,9 @@ sampler SamplerDepthProcessed
 	    MinFilter = LINEAR;
 	    MagFilter = LINEAR;
 };
+
+//Namespace
+}
 
 texture texMotionVectors
 {
@@ -248,7 +247,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 	float SampleDistVector = dot(SampleDist, 1.0);
 	float4 SummedSamples = 0;
 	float4 Sampled = 0;
-	float4 Color = tex2D(SamplerColor, texcoord);
+	float4 Color = tex2D(ReShade::BackBuffer, texcoord);
 	float2 NoiseOffset = 0;
 	if (abs(SampleDistVector) > 0.001)
 	{
@@ -257,7 +256,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 	// Blur Loop
 	for (int s = 0; s < UI_BLUR_SAMPLES_MAX; s++)
 	{
-		Sampled = tex2D(SamplerColor, texcoord - SampleDist * (s - HALF_SAMPLES) + (NoiseOffset * UI_BLUR_BLUE_NOISE));
+		Sampled = tex2D(ReShade::BackBuffer, texcoord - SampleDist * (s - HALF_SAMPLES) + (NoiseOffset * UI_BLUR_BLUE_NOISE));
 
 		// HDR10 BT.2020 PQ
 		[branch]
@@ -286,7 +285,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 		#if FAKE_GAIN
 		[branch]
 		if (inColorSpace == 1 || inColorSpace == 2)
-	        Gain = abs(pow(smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD * 10, luminance), UI_GAIN_POWER) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE);
+	        Gain = abs(pow(smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD * 12.5, luminance), UI_GAIN_POWER) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE);
 		else
 	        Gain = pow(smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD, luminance), UI_GAIN_POWER) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE;
 		#endif

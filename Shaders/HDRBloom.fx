@@ -170,15 +170,9 @@ uniform bool UI_BLOOM_DEBUG_RAW
 	ui_tooltip =
 		"Should the bloom texture be multiplied by amount before display or show the raw texture?"
 		"\n" "\n" "Default: On";
-> = true;
+> = false;
 
 // Textures
-texture ColorTex : COLOR;
-sampler SamplerColor
-{
-	Texture = ColorTex;
-};
-
 texture BloomCombinedTex
 {
 		Width = BUFFER_WIDTH / DownsampleAmount.x;
@@ -228,7 +222,7 @@ sampler BloomCombined
 // Preprocessing Pixels Shader
 float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
-	float4 color = tex2D(SamplerColor, texcoord);
+	float4 color = tex2D(ReShade::BackBuffer, texcoord);
 	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
 	uint inColorSpace = UI_IN_COLOR_SPACE;
 	// HDR10 BT.2020 PQ
@@ -364,7 +358,7 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 
 float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
-	float4 finalcolor = tex2D(SamplerColor, texcoord);
+	float4 finalcolor = tex2D(ReShade::BackBuffer, texcoord);
 	float4 bloom = tex2D(BloomCombined, texcoord);
 
 	// There can be a ONE MORE blurring step here, but at this point, it's pretty destructive

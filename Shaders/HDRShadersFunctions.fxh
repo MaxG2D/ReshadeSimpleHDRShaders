@@ -336,26 +336,28 @@ static const float3x3 BT2020_2_BT709 = float3x3(
 static const float3x3 XYZ_2_BT2020_MAT = float3x3(
 	0.6369580483, 0.1446169032, 0.1688809751,
 	0.2627002120, 0.6779980715, 0.0593017165,
-	0.0000000000, 0.0280726930, 1.0609850576
-);
+	0.0000000000, 0.0280726930, 1.0609850576);
 
 static const float3x3 BT2020_2_XYZ_MAT = float3x3(
 	1.71665118797126, -0.355670783776392, -0.253366281373659,
 	-0.666684351832489, 1.61648123663494, 0.015768545813911,
-	0.0176398574453105, -0.0427706132578086, 0.942103121235473
-);
+	0.0176398574453105, -0.0427706132578086, 0.942103121235473);
 
 static const float3x3 AP1_2_BT2020_MAT = float3x3(
 	1.6410233797, -0.3248032942, -0.2364246952,
 	-0.6636628587, 1.6153315917, 0.0167563477,
-	0.0117218943, -0.0082844420, 0.9883948585
-);
+	0.0117218943, -0.0082844420, 0.9883948585);
 
 static const float3x3 BT2020_2_AP1_MAT = float3x3(
 	0.6624541811, 0.1340042065, 0.1561876870,
 	0.2722287168, 0.6740817658, 0.0536895174,
-	-0.0055746495, 0.0040607335, 1.0103391003
-);
+	-0.0055746495, 0.0040607335, 1.0103391003);
+
+static const float3x3 XYZ_2_LMS_MAT = float3x3(
+	0.4002, 0.7075, -0.0808,
+	-0.2263, 1.1653, 0.0457,
+	0.0000, 0.0000, 0.9182);
+
 
 /////////////////////////////////////////////
 //CONVERSIONS - CHROMA (FUNCTIONS)
@@ -902,12 +904,13 @@ float3 ExpandGamut(float3 HDRColor, float ExpandGamut)
 
 	float ChromaDistSqr = dot(ChromaAP1 - 1, ChromaAP1 - 1);
 	//float ExpandAmount = (1 - exp2(-4 * ChromaDistSqr)) * (1 - exp2(-4 * ExpandGamut * LumaAP1 * LumaAP1));
-	float ExpandAmount = (1 - exp2(-1 * ChromaDistSqr)) * (1 - exp2(-1 * ExpandGamut * LumaAP1));
+	//float ExpandAmount = (1 - exp2(-1 * ChromaDistSqr)) * (1 - exp2(-1 * ExpandGamut * LumaAP1));  // Less extreme version
+	float ExpandAmount = 1 - exp2(-ExpandGamut * ChromaDistSqr); // More uniform
 
 	float3 ColorExpand = mul(ExpandMat, mul(LumaAP1, ChromaAP1));
 	ColorAP1 = lerp(ColorAP1, ColorExpand, ExpandAmount);
-
 	HDRColor = mul(AP1_2_sRGB, ColorAP1);
+
 	return HDRColor;
 }
 
@@ -957,7 +960,7 @@ float3 HLG_Inverse(float3 color)
 {
 	float a = 0.17883277;
 	float b = 0.28466892;
-	float c = 0.55991073;
+	float c = 0.55991072952956202016;
 
 	float3 x = color;
 	float3 y = pow((a * x + b), 1.0 / c);
@@ -970,9 +973,54 @@ float3 BT2390_Inverse(float3 color)
 {
 	float a = 0.17883277;
 	float b = 0.28466892;
-	float c = 0.55991073;
+	float c = 0.55991072952956202016;
 
 	color = max(color, 0.0);
 	float3 x = color;
 	return (pow(x, 1.0/2.4) * (c * x + b) / (c * x + a));
+}
+
+//PBR Neutral Tonemapping
+//(https://modelviewer.dev/examples/tone-mapping)
+float3 PBRToneMapping(float3 color)
+{
+	static const float startCompression = 0.8 - 0.04;
+	static const float desaturation = 0.15;
+	float x = min(color.r, min(color.g, color.b));
+	float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+	color -= offset;
+
+	float peak = max(color.r, max(color.g, color.b));
+	if (peak < startCompression) return color;
+
+	float d = 1. - startCompression;
+	float newPeak = 1. - d * d / (peak + d - startCompression);
+	color *= newPeak / peak;
+
+	float g = 1. - 1. / (desaturation * (peak - newPeak) + 1.);
+	return lerp(color, newPeak * float3(1, 1, 1), g);
+}
+
+// Approximate Inverse PBR Neutral Tonemapping
+float3 PBRToneMapping_Inverse(float3 color)
+{
+	static const float startCompression = 0.8 - 0.04;
+	static const float desaturation = 0.15;
+	float peak = max(color.r, max(color.g, color.b));
+	float g = 1. - 1. / (desaturation * (1.0 - peak) + 1.);
+	float3 originalColor = lerp(color, float3(1, 1, 1), -g);
+
+	peak = max(originalColor.r, max(originalColor.g, originalColor.b));
+	if (peak >= startCompression)
+	{
+		float d = 1. - startCompression;
+		float newPeak = peak / (1. - d * d / (1. - peak + d - startCompression));
+		originalColor *= newPeak / peak;
+	}
+
+	float x = min(originalColor.r, min(originalColor.g, originalColor.b));
+	float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+	originalColor += offset;
+
+	return originalColor;
 }

@@ -10,6 +10,11 @@
 #include "HDRShadersFunctions.fxh"
 
 // Defines
+
+#ifndef ENABLE_DESATURATION
+#define ENABLE_DESATURATION 0
+#endif
+
 static const int
 	Luma = 0,
 	YUV = 1,
@@ -17,6 +22,9 @@ static const int
 	Vibrance = 3,
 	Adaptive = 4,
 	OKLAB = 5;
+
+namespace HDRShaders
+{
 
 // UI
 uniform int UI_SATURATION_METHOD
@@ -30,12 +38,17 @@ uniform int UI_SATURATION_METHOD
 > = OKLAB;
 
 uniform float UI_SATURATION_AMOUNT <
-	ui_min = -1.0; ui_max = 10.0;
+	#if ENABLE_DESATURATION
+		ui_min = -1.0;
+	#else
+		ui_min = 0.01;
+	#endif
+	ui_max = 20.0;
 	ui_label = "Amount";
 	ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 3.25;
+> = 20.0;
 
 uniform float UI_SATURATION_LIMIT <
 	ui_min = 0.0; ui_max = 1.0;
@@ -43,7 +56,7 @@ uniform float UI_SATURATION_LIMIT <
 	ui_tooltip = "Switch between global or highlight only saturation";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.75;
+> = 0.98;
 
 uniform float UI_SATURATION_CLIPPING_LIMIT <
 	ui_min = 0.0; ui_max = 1.0;
@@ -51,15 +64,15 @@ uniform float UI_SATURATION_CLIPPING_LIMIT <
 	ui_tooltip = "Avoid clipping out highlight color details";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.78;
+> = 0.90;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION <
-	ui_min = 0.0; ui_max = 1000.0;
+	ui_min = 0.01; ui_max = 20.0;
 	ui_label = "Gamut Expansion";
 	ui_tooltip = "Generates HDR colors from bright saturated SDR ones. Neutral at 0";
-	ui_step = 1;
+	ui_step = 0.01;
 	ui_type = "slider";
-> = 500.0;
+> = 0.50;
 
 float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {
@@ -76,14 +89,15 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 	float HDRLuminance = Luminance(PreProcessedColor, lumCoeffHDR);
 
 	float BaseSaturationRatio = 1.0 + UI_SATURATION_AMOUNT;
-	float SaturationClippingFactor = 1.0 - saturate(HDRLuminance) * UI_SATURATION_CLIPPING_LIMIT;
-	float AdjustedSaturationRatio = BaseSaturationRatio * SaturationClippingFactor;
+	float SaturationClippingFactor = 1.0 - saturate(HDRLuminance) * (UI_SATURATION_CLIPPING_LIMIT);
+	float AdjustedSaturationRatio = BaseSaturationRatio;
 
 	float RatioBlend;
 	if (UI_SATURATION_AMOUNT > 0.0)
 	{
+		AdjustedSaturationRatio *= SaturationClippingFactor;
 		const float OklabLightness = RGBToOKLab(PreProcessedColor)[0];
-		const float HighlightSaturationRatio = (OklabLightness + (1.f / 48.f)) / (48.f / 1.f);
+		const float HighlightSaturationRatio = (OklabLightness + (1.f / 48.f)) / (192.f / 1.f);
 		const float MidSaturationRatio = OklabLightness;
 		RatioBlend = lerp(MidSaturationRatio, HighlightSaturationRatio, UI_SATURATION_LIMIT);
 	}
@@ -92,7 +106,7 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 		RatioBlend = 1.0;
 	}
 
-	float AdjustedSaturation = lerp(1.f, AdjustedSaturationRatio, RatioBlend);
+	float AdjustedSaturation = max(lerp(1.f, AdjustedSaturationRatio, RatioBlend), .0f);
 
 	if (UI_SATURATION_METHOD == Luma)
 	{
@@ -121,7 +135,7 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 
 	if (UI_SATURATION_GAMUT_EXPANSION > 0.f)
 	{
-		PreProcessedColor = ExpandGamut(PreProcessedColor, UI_SATURATION_GAMUT_EXPANSION * 0.01);
+		PreProcessedColor = ExpandGamut(PreProcessedColor, UI_SATURATION_GAMUT_EXPANSION);
 		PreProcessedColor /= 125.f;
 		PreProcessedColor = BT709_2_BT2020(PreProcessedColor);
 		PreProcessedColor = max(PreProcessedColor, 0.f);
@@ -143,4 +157,7 @@ ui_label = "HDRSaturation";>
 		VertexShader = PostProcessVS;
 		PixelShader  = SaturationAdjustment;
 	}
+}
+
+//Namespace
 }
