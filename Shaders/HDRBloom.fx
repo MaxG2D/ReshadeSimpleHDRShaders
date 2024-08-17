@@ -26,6 +26,10 @@
 #define LINEAR_CONVERSION 0
 #endif
 
+#ifndef DIRT_TEXTURE
+#define DIRT_TEXTURE 0
+#endif
+
 #if DOWNSAMPLE < 1
 	#error "Downsample cannot be less than 1x"
 #endif
@@ -40,6 +44,12 @@ static const int
 static const int
 	None = 0,
 	Reinhard = 1;
+	
+static const int
+	Medium = 0,
+	High = 1,
+	Ultra = 2,
+	Overkill = 3;
 
 static const int2 DownsampleAmount = DOWNSAMPLE;
 
@@ -89,6 +99,32 @@ uniform float UI_BLOOM_SATURATION
 	ui_max = 10.0;
 > = 1.0;
 
+#if DIRT_TEXTURE
+uniform float UI_DIRT_THRESHOLD
+<
+	ui_category = "Bloom - Dirt";
+	ui_label = "Dirt Threshold";
+	ui_tooltip =
+		"The threshold of dirt texture to apply to the image"
+		"\n" "\n" "Default: 0.9";
+	ui_type = "slider";
+	ui_min = 0.0;
+	ui_max = 1.0;
+> = 0.9;
+
+uniform float UI_DIRT_BRIGHTNESS
+<
+	ui_category = "Bloom - Dirt";
+	ui_label = "Dirt Brightness";
+	ui_tooltip =
+		"Scalar of the dirt texture brightness."
+		"\n" "\n" "Default: 200.0";
+	ui_type = "slider";
+	ui_min = 0.0;
+	ui_max = 200.0;
+> = 100.0;
+#endif
+
 uniform int UI_SAMPLE_COUNT
 <
 	ui_category = "Bloom - Advanced";
@@ -98,8 +134,8 @@ uniform int UI_SAMPLE_COUNT
 	"\n" "\n" "Default: Medium";
 	ui_category_closed = true;
 	ui_type = "combo";
-	ui_items = "Medium\0High\0Ultra\0Overkill\0";
-> = 0;
+	ui_items = "Medium\0High\0Ultra\0Overkill\0";  //0 - M<edium, 1 - High, 2 - Ultra, 3 - Overkill
+> = Medium;
 
 uniform int UI_BLOOM_INV_TMO
 <
@@ -122,7 +158,7 @@ uniform float UI_BLOOM_BLUR_SIZE
 		"\n" "\n" "Default: 0.75";
 	ui_category_closed = true;
 	ui_type = "slider";
-	ui_min = 0.1;
+	ui_min = 0.5;
 	ui_max = 4.0;
 > = 2.0;
 
@@ -139,7 +175,7 @@ uniform float UI_BLOOM_SECOND_BLUR_SIZE
 	ui_type = "slider";
 	ui_min = 0.0;
 	ui_max = 10.0;
-> = 6.0;
+> = 7.0;
 #endif
 
 uniform int UI_BLOOM_BLENDING_TYPE
@@ -190,6 +226,24 @@ sampler BloomCombined
 		AddressV = Border;
 };
 
+#if DIRT_TEXTURE
+texture DirtTexture
+{
+		Width = BUFFER_WIDTH;
+		Height = BUFFER_HEIGHT;
+		Format = R16F;
+};
+sampler SamplerDirtTexture2
+{
+		Texture = DirtTexture;
+		MinFilter = LINEAR;
+		MagFilter = LINEAR;
+		MipFilter = LINEAR;
+		AddressU = Border;
+		AddressV = Border;
+};
+#endif
+
 #define DECLARE_BLOOM_TEXTURE(TexName, Downscale) \
 	texture TexName##Mip <pooled = true;> \
 	{ \
@@ -218,32 +272,21 @@ sampler BloomCombined
 	DECLARE_BLOOM_TEXTURE(Bloom4, 16);
 	DECLARE_BLOOM_TEXTURE(Bloom5, 32);
 	DECLARE_BLOOM_TEXTURE(Bloom6, 64);
+	DECLARE_BLOOM_TEXTURE(Bloom7, 128);
 
 // Preprocessing Pixels Shader
 float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
 	float4 color = tex2D(ReShade::BackBuffer, texcoord);
 	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
+	
 	uint inColorSpace = UI_IN_COLOR_SPACE;
 	// HDR10 BT.2020 PQ
 	if (inColorSpace == 2)
 	{
 		color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
-		//color.rgb = BT2020_2_BT709(color.rgb);
 		color.rgb = PQToLinear(color.rgb);
 	}
-
-	// HDR Thresholding (ignoring 0.0-1.0 range)
-	#if REMOVE_SDR_VALUES
-		if (Luminance(color.rgb, lumCoeffHDR) < 1.f)
-		{
-			color.rgb = 0.f;
-		}
-	#endif
-
-	#if LINEAR_CONVERSION
-		color.rgb = sRGBToLinear(color.rgb);
-	#endif
 
 	// Inv Tonemapping
 	if (UI_BLOOM_INV_TMO == 0)
@@ -253,13 +296,26 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		color.rgb = Reinhard_Inverse(color.rgb);
 	}
 
+	#if LINEAR_CONVERSION
+		color.rgb = sRGBToLinear(color.rgb);
+	#endif
+
+	// HDR Thresholding (ignoring 0.0-1.0 range)
+	#if REMOVE_SDR_VALUES
+		if (Luminance(color.rgb, lumCoeffHDR) < 1.f)
+		{
+			color.rgb = 0.f;
+		}
+	#endif
+
 	// Bloom Brightness
 	color.rgb *= UI_BLOOM_BRIGHTNESS;
 
 	// Bloom Saturation
-	color.rgb = max(LumaSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
-
-	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
+	color.rgb = max(AdaptiveSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
+	
+	//color.rgb = WideColorsClamp(color.rgb);
+	//color.rgb = GamutMapping(clamp(color.rgb, -FLT16_MAX, FLT16_MAX));
 	return color;
 }
 
@@ -295,11 +351,10 @@ float4 GaussianBlur(sampler SampledTexture, float2 TexCoord, float2 Direction, f
 
 	float4 color = 0.0;
 	static const float halfSamples = (kernelSize - 1) * 0.5;
-
+	static const float2 GaussBlur = Direction * GetPixelSize() * DownsampleAmount * (BlurSize / DownsampleAmount) * sqrt(2.0 * PI) / (SampleCount * 0.5 + 1);
 	for (int i = 0; i < kernelSize; ++i)
 	{
-		float2 offset = Direction * GetPixelSize() * DownsampleAmount *
-		(BlurSize / DownsampleAmount) * sqrt(2.0 * PI) * (i - halfSamples);
+		float2 offset = GaussBlur * (i - halfSamples);
 
 		color += (tex2D(SampledTexture, TexCoord - offset).rgba * weights[i]);
 	}
@@ -324,7 +379,8 @@ float4 GaussianBlur(sampler SampledTexture, float2 TexCoord, float2 Direction, f
 	DEFINE_BLUR_FUNCTIONS(8, 9, Bloom3, 16);
 	DEFINE_BLUR_FUNCTIONS(10, 11, Bloom4, 32);
 	DEFINE_BLUR_FUNCTIONS(12, 13, Bloom5, 64);
-	DEFINE_BLUR_FUNCTIONS(13, 14, Bloom6, 256)
+	DEFINE_BLUR_FUNCTIONS(14, 15, Bloom6, 128);
+	DEFINE_BLUR_FUNCTIONS(16, 17, Bloom7, 256)
 
 // Merging all bloom textures so far into a single texture
 float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
@@ -339,8 +395,9 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 		CircularBlur(Bloom3, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 1.6, 12, DownsampleAmount.x) +
 		CircularBlur(Bloom4, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 3.2, 12, DownsampleAmount.x) +
 		CircularBlur(Bloom5, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 6.4, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom6, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 12.8, 12, DownsampleAmount.x);
-	MergedBloom /= 7;
+		CircularBlur(Bloom6, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 12.8, 12, DownsampleAmount.x) +
+		CircularBlur(Bloom7, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 25.6, 12, DownsampleAmount.x);
+	MergedBloom /= 8;
 #else
 	MergedBloom +=
 		tex2D(Bloom0, texcoord) +
@@ -349,8 +406,9 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 		tex2D(Bloom3, texcoord) +
 		tex2D(Bloom4, texcoord) +
 		tex2D(Bloom5, texcoord) +
-		tex2D(Bloom6, texcoord);
-	MergedBloom /= 7;
+		tex2D(Bloom6, texcoord) +
+		tex2D(Bloom7, texcoord);
+	MergedBloom /= 8;
 #endif
 
 	return MergedBloom;
@@ -358,8 +416,15 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 
 float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
-	float4 finalcolor = tex2D(ReShade::BackBuffer, texcoord);
+	float4 finalcolor = tex2D(ReShade::BackBuffer, texcoord);	
 	float4 bloom = tex2D(BloomCombined, texcoord);
+	//bloom = WideColorsClamp(bloom.rgb);
+	//bloom = GamutMapping(bloom.rgb);
+	
+	#if DIRT_TEXTURE
+	float4 dirt = tex2D(SamplerDirtTexture2, texcoord);
+	bloom = lerp(bloom, bloom + max((bloom * (dirt.r * (UI_DIRT_BRIGHTNESS * 10))), bloom), 1.0 - UI_DIRT_THRESHOLD);
+	#endif
 
 	// There can be a ONE MORE blurring step here, but at this point, it's pretty destructive
 	//
@@ -374,8 +439,6 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	if (inColorSpace == 2)
 		{
 			bloom.rgb = fixNAN(bloom.rgb);
-			//bloom.rgb = DisplayMapColor(bloom.rgb, luminance, HDR_MAX_NITS);
-			//bloom.rgb = BT709_2_BT2020(bloom.rgb);
 			bloom.rgb = LinearToPQ(bloom.rgb);
 		}
 
@@ -393,14 +456,17 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 			? (UI_BLOOM_DEBUG_RAW ? bloom.rgb * UI_BLOOM_AMOUNT : bloom.rgb)
 			: finalcolor.rgb + (bloom.rgb * UI_BLOOM_AMOUNT);
 		}
-
+		
+	//finalcolor.rgb = WideColorsClamp(finalcolor.rgb);
+	//finalcolor.rgb = GamutMapping(finalcolor.rgb);
+	
 	// SDR Clamp
 	if (inColorSpace == 0)
 		{
 			finalcolor = clamp(finalcolor, 0.0, 1.0);
 		}
-	return finalcolor;
 
+	return finalcolor;
 }
 
 // Main technique
@@ -435,6 +501,7 @@ ui_label = "HDRBloom";>
 	ADD_BLUR_PASSES(4, 8, 9)
 	ADD_BLUR_PASSES(5, 10, 11)
 	ADD_BLUR_PASSES(6, 12, 13)
+	ADD_BLUR_PASSES(7, 14, 15)
 
 	pass CombineBloom
 	{
