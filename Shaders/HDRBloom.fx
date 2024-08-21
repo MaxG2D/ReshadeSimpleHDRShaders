@@ -18,6 +18,11 @@
 #define ADDITIONAL_BLUR_PASS 1
 #endif
 
+// Good range is between 12-24
+#ifndef ADDITIONAL_BLUR_SAMPLES
+#define ADDITIONAL_BLUR_SAMPLES 12
+#endif
+
 #ifndef DOWNSAMPLE
 #define DOWNSAMPLE 4
 #endif
@@ -110,7 +115,7 @@ uniform float UI_DIRT_THRESHOLD
 	ui_type = "slider";
 	ui_min = 0.0;
 	ui_max = 1.0;
-> = 0.9;
+> = 0.8;
 
 uniform float UI_DIRT_BRIGHTNESS
 <
@@ -122,7 +127,7 @@ uniform float UI_DIRT_BRIGHTNESS
 	ui_type = "slider";
 	ui_min = 0.0;
 	ui_max = 200.0;
-> = 100.0;
+> = 75.0;
 #endif
 
 uniform int UI_SAMPLE_COUNT
@@ -134,7 +139,7 @@ uniform int UI_SAMPLE_COUNT
 	"\n" "\n" "Default: Medium";
 	ui_category_closed = true;
 	ui_type = "combo";
-	ui_items = "Medium\0High\0Ultra\0Overkill\0";  //0 - M<edium, 1 - High, 2 - Ultra, 3 - Overkill
+	ui_items = "Medium\0High\0Ultra\0Overkill\0";  // 0 - Medium, 1 - High, 2 - Ultra, 3 - Overkill
 > = Medium;
 
 uniform int UI_BLOOM_INV_TMO
@@ -175,7 +180,7 @@ uniform float UI_BLOOM_SECOND_BLUR_SIZE
 	ui_type = "slider";
 	ui_min = 0.0;
 	ui_max = 10.0;
-> = 7.0;
+> = 5.0;
 #endif
 
 uniform int UI_BLOOM_BLENDING_TYPE
@@ -313,9 +318,7 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 
 	// Bloom Saturation
 	color.rgb = max(AdaptiveSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
-	
-	//color.rgb = WideColorsClamp(color.rgb);
-	//color.rgb = GamutMapping(clamp(color.rgb, -FLT16_MAX, FLT16_MAX));
+
 	return color;
 }
 
@@ -389,14 +392,14 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 
 #if ADDITIONAL_BLUR_PASS
 	MergedBloom +=
-		CircularBlur(Bloom0, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.2, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom1, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.4, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom2, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.8, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom3, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 1.6, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom4, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 3.2, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom5, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 6.4, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom6, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 12.8, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom7, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 25.6, 12, DownsampleAmount.x);
+		CircularBlur(Bloom0, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.2, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom1, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.4, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom2, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.8, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom3, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 1.6, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom4, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 3.2, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom5, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 6.4, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom6, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 12.8, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom7, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 25.6, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x);
 	MergedBloom /= 8;
 #else
 	MergedBloom +=
@@ -418,8 +421,6 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 {
 	float4 finalcolor = tex2D(ReShade::BackBuffer, texcoord);	
 	float4 bloom = tex2D(BloomCombined, texcoord);
-	//bloom = WideColorsClamp(bloom.rgb);
-	//bloom = GamutMapping(bloom.rgb);
 	
 	#if DIRT_TEXTURE
 	float4 dirt = tex2D(SamplerDirtTexture2, texcoord);
@@ -456,9 +457,6 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 			? (UI_BLOOM_DEBUG_RAW ? bloom.rgb * UI_BLOOM_AMOUNT : bloom.rgb)
 			: finalcolor.rgb + (bloom.rgb * UI_BLOOM_AMOUNT);
 		}
-		
-	//finalcolor.rgb = WideColorsClamp(finalcolor.rgb);
-	//finalcolor.rgb = GamutMapping(finalcolor.rgb);
 	
 	// SDR Clamp
 	if (inColorSpace == 0)

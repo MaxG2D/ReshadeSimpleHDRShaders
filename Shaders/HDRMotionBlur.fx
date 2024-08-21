@@ -27,6 +27,10 @@
 #define VELOCITY_SCALE 50.0
 #define HALF_SAMPLES (UI_BLUR_SAMPLES_MAX / 2)
 
+static const int
+	Linear = 0,
+	Bezier = 1;
+
 // UI
 uniform int README
 <
@@ -35,9 +39,7 @@ uniform int README
 	ui_label    = " ";
 	ui_type     = "radio";
 	ui_text     =
-			"This shader MUST have one of the optical flow shaders enabled before it, otherwise it won't work!"
-			"\n" "\n" "Be careful with FAKE_GAIN_REJECT function, it's mostly legacy (for SDR), pushing it too far will reduce perf!"
-			"\n" "It's meant to reduce flickering when a lot of neighbouring pixels are bright, which happens a lot in old SDR games.";
+			"This shader MUST have one of the optical flow shaders enabled before it, otherwise it won't work!";
 >;
 
 uniform uint UI_IN_COLOR_SPACE
@@ -49,6 +51,17 @@ uniform uint UI_IN_COLOR_SPACE
 	ui_category = "Calibration";
 > = DEFAULT_COLOR_SPACE;
 
+uniform uint UI_BLUR_CURVE
+<
+	ui_label    = "Blur Curve";
+	ui_type     = "combo";
+	ui_items    = "Linear\0Bezier\0";
+	ui_tooltip = "Specify the blurring shape of the curve"
+	"\n""\n" "By default, it uses bezier curve which gives it more cinematic look"
+	"\n" "But you can use linear sampling which gives it more artificial but sort of more flashy look";
+	ui_category = "Motion Blur";
+> = Bezier;
+
 uniform float  UI_BLUR_LENGTH <
 	ui_min = 0.1; ui_max = 1.0; ui_step = 0.01;
 	ui_type = "slider";
@@ -56,17 +69,7 @@ uniform float  UI_BLUR_LENGTH <
 	ui_tooltip =
 	"Scale of the blur amount.";
 	ui_category = "Motion Blur";
-> = 0.4;
-
-uniform float  UI_BLUR_LENGTH_CLAMP <
-	ui_min = 0.05; ui_max = 1; ui_step = 0.001;
-	ui_type = "slider";
-	ui_label = "Blur Length Clamp";
-	ui_tooltip =
-	"Clamp of maximum blur length."
-	"\n" "Help achieve strong object base blur while making screen based motion fairly low.";
-	ui_category = "Motion Blur";
-> = 0.100;
+> = 0.25;
 
 uniform int  UI_BLUR_SAMPLES_MAX <
 	ui_min = 8; ui_max = 64; ui_step = 1;
@@ -78,15 +81,6 @@ uniform int  UI_BLUR_SAMPLES_MAX <
 	ui_category = "Motion Blur";
 > = 20;
 
-uniform float  UI_BLUR_CENTER_SAMPLING <
-	ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
-	ui_type = "slider";
-	ui_label = "Blur Sampling: Center->Lag";
-	ui_tooltip =
-	"Scalar of lerp between center sampling and previous frame sampling.";
-	ui_category = "Motion Blur";
-> = 0.40;
-
 uniform float  UI_BLUR_BLUE_NOISE <
 	ui_min = 0.0; ui_max = 1; ui_step = 0.01;
 	ui_type = "slider";
@@ -96,14 +90,41 @@ uniform float  UI_BLUR_BLUE_NOISE <
 	ui_category = "Motion Blur";
 > = 0.25;
 
+uniform bool UI_BLUR_BLUE_NOISE_DEBUG
+<
+	ui_label = "Blue Noise Debug";
+	ui_tooltip =
+		"Show Blue Noise Threshold.";
+	ui_category = "Motion Blur - Advanced";
+> = false;
+
+uniform float  UI_BLUR_LENGTH_CLAMP <
+	ui_min = 0.05; ui_max = 1; ui_step = 0.001;
+	ui_type = "slider";
+	ui_label = "Blur Length Clamp";
+	ui_tooltip =
+	"Clamp of maximum blur length."
+	"\n" "Help achieve strong object base blur while making screen based motion fairly low.";
+	ui_category = "Motion Blur - Advanced";
+> = 0.115;
+
+uniform float  UI_BLUR_CENTER_SAMPLING <
+	ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+	ui_type = "slider";
+	ui_label = "Blur Sampling: Center->Lag";
+	ui_tooltip =
+	"Scalar of lerp between center sampling and previous frame sampling.";
+	ui_category = "Motion Blur - Advanced";
+> = 0.25;
+
 uniform float  UI_BLUR_BLUE_THRESHOLD <
 	ui_min = 0.000050; ui_max = 0.001000; ui_step = 0.000001;
 	ui_type = "slider";
 	ui_label = "Blue Noise Threshold";
 	ui_tooltip =
 	"Threshold of the velocity vector length before blue noise sampling kicks in.";
-	ui_category = "Motion Blur";
-> = 0.000090;
+	ui_category = "Motion Blur - Advanced";
+> = 0.000125;
 
 #if DEPTH_ENABLE
 uniform float  UI_BLUR_DEPTH_WEIGHT <
@@ -161,17 +182,6 @@ uniform float UI_GAIN_SCALE <
 	ui_category = "HDR Simulation";
 > = 1.00;
 
-uniform float UI_GAIN_POWER <
-	ui_label = "Fake Gain Power";
-	ui_min = 0.1;
-	ui_max = 10.0;
-	ui_step = 0.01;
-	ui_type = "slider";
-	ui_tooltip =
-	"Power used to shift the curve of the gain more towards the highlights";
-	ui_category = "HDR Simulation";
-> = 1.00;
-
 uniform float UI_GAIN_THRESHOLD <
 	ui_label = "Fake Gain Threshold";
 	ui_min = 0.0;
@@ -181,7 +191,7 @@ uniform float UI_GAIN_THRESHOLD <
 	ui_tooltip =
 	"Pixels with luminance above this value will be boosted.";
 	ui_category = "HDR Simulation";
-> = 0.80;
+> = 0.25;
 
 uniform float UI_GAIN_THRESHOLD_SMOOTH <
 	ui_label = "Fake Gain Smoothness";
@@ -192,19 +202,18 @@ uniform float UI_GAIN_THRESHOLD_SMOOTH <
 	ui_tooltip =
 	"Thresholding that smoothly interpolates between max and min value of luminance.";
 	ui_category = "HDR Simulation";
-> = 0.80;
+> = 0.25;
 #endif
 
 namespace HDRShaders
 {
-
-	//  Textures & Samplers
+	// Textures & Samplers
 	texture DepthBufferTexture : DEPTH;
 	sampler SamplerDepth
 	{
 		Texture = DepthBufferTexture;
 	};
-	
+
 	texture DepthProcessedTex
 	{
 			Width = BUFFER_WIDTH;
@@ -217,8 +226,9 @@ namespace HDRShaders
 		    MagFilter = LINEAR;
 	};
 
-	//Namespace
+// Namespace
 }
+
 
 texture texMotionVectors
 {
@@ -242,8 +252,8 @@ float4 DepthProcessPS(float4 p : SV_Position, float2 texcoord : TEXCOORD ) : SV_
 {
 	float4 ProcessedDepth = GetLinearizedDepth(HDRShaders::SamplerDepth, texcoord).xxxx;
 	float NormalizeDepth = normalize(ProcessedDepth.xyzw).x;
-	
-	if (NormalizeDepth.x >= 0.9999999) 
+
+	if (NormalizeDepth.x >= 0.9999999)
 		ProcessedDepth = 0.f;
 	return ProcessedDepth;
 }
@@ -252,113 +262,146 @@ float4 DepthProcessPS(float4 p : SV_Position, float2 texcoord : TEXCOORD ) : SV_
 // Main Pixel Shader
 float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {
-    uint inColorSpace = UI_IN_COLOR_SPACE;
-    
-    static float2 Velocity = tex2D(SamplerMotionVectors2, texcoord).xy;
-    static float2 VelocityTimed = Velocity / frametime;
-    float2 BlurDist = 0;
-    
-    #if DEPTH_ENABLE
-        float4 Depthbuffer = CircularBlur(HDRShaders::SamplerDepthProcessed, texcoord, UI_BLUR_DEPTH_BLUR_EDGES, UI_BLUR_DEPTH_BLUR_SAMPLES, 1);
-        float4 DepthBufferScaled = saturate(min(pow((1.0 - Depthbuffer.xyzw), UI_BLUR_DEPTH_WEIGHT), 1));
-        
-    	BlurDist = VelocityTimed * VELOCITY_SCALE * (DepthBufferScaled.xx) * UI_BLUR_LENGTH;
-    #else
-    	BlurDist = VelocityTimed * VELOCITY_SCALE * UI_BLUR_LENGTH;
-    #endif
-    
-    // Clamp large displacements
-    BlurDist = ClampMotionVector(BlurDist, UI_BLUR_LENGTH_CLAMP/10);
-    float HalfSampleSwitch = HALF_SAMPLES * (1.0 - UI_BLUR_CENTER_SAMPLING);
-    float SamplesMinusOne = UI_BLUR_SAMPLES_MAX - 1;
-    float2 SampleDist = (BlurDist / SamplesMinusOne) * (lerp(1, 0.5, UI_BLUR_CENTER_SAMPLING));    
-    float SampleDistVector = dot(SampleDist, 0.25);
+	uint inColorSpace = UI_IN_COLOR_SPACE;
 
-    // Define control points for the cubic Bezier curve
-    float2 p0 = texcoord;
-    float2 p1 = texcoord + BlurDist * 0.33;
-    float2 p2 = texcoord + BlurDist * 0.66;
-    float2 p3 = texcoord + BlurDist;
+	static float2 Velocity = tex2D(SamplerMotionVectors2, texcoord).xy;
+	static float2 VelocityTimed = Velocity / frametime;
+	float2 BlurDist = 0;
 
-    float4 SummedSamples = 0;
-    float4 Sampled = 0;
-    float4 Color = tex2D(ReShade::BackBuffer, texcoord);    
-    float2 NoiseOffset = 0;
-    if (abs(SampleDistVector) > UI_BLUR_BLUE_THRESHOLD)
-    {
-        NoiseOffset = BlueNoise(texcoord + SampleDist * (0 - HalfSampleSwitch)) * 0.001);
-    }
+	#if DEPTH_ENABLE
+		float4 Depthbuffer = CircularBlur(HDRShaders::SamplerDepthProcessed, texcoord, UI_BLUR_DEPTH_BLUR_EDGES, UI_BLUR_DEPTH_BLUR_SAMPLES, 1);
+		float4 DepthBufferScaled = saturate(min(pow((1.0 - Depthbuffer.xyzw), UI_BLUR_DEPTH_WEIGHT), 1));
 
-    for (float t = 0.0; t <= 1.0; t += 1.0 / SamplesMinusOne)
-    {
-		//float2 SampleCoord = LagrangeInterpolation(p0, p1, p2, p3, t);
-        float2 SampleCoord = BezierCurveCubic(p0, p1, p2, p3, t);
-    	Sampled = tex2D(ReShade::BackBuffer, SampleCoord + SampleDist * (t - HalfSampleSwitch) * GetAspectRatio() + (NoiseOffset * UI_BLUR_BLUE_NOISE * 2));
-        
-		// HDR10 BT.2020 PQ
-        [branch]
-        if (inColorSpace == 2)
-        {
-            Sampled.rgb = clamp(Sampled.rgb, -FLT16_MAX, FLT16_MAX);
-            Sampled.rgb = PQToLinear(Sampled.rgb);
-        }
+		BlurDist = VelocityTimed * VELOCITY_SCALE * (DepthBufferScaled.xx) * UI_BLUR_LENGTH;
+	#else
+		BlurDist = VelocityTimed * VELOCITY_SCALE * UI_BLUR_LENGTH;
+	#endif
 
-        #if LINEAR_CONVERSION
-            Sampled.rgb = sRGBToLinear(Sampled.rgb);
-        #endif
+	// Clamp large displacements
+	BlurDist = ClampMotionVector(BlurDist, UI_BLUR_LENGTH_CLAMP/10);
+	float HalfSampleSwitch = HALF_SAMPLES * (UI_BLUR_CENTER_SAMPLING);
+	float HalfSampleSwitchInv = HALF_SAMPLES * (1.0 - UI_BLUR_CENTER_SAMPLING);
+	float SamplesMinusOne = UI_BLUR_SAMPLES_MAX - 1;
+	float2 SampleDist = (BlurDist / SamplesMinusOne) * (lerp(1, 0.5, UI_BLUR_CENTER_SAMPLING));
+	float SampleDistVector = dot(SampleDist, 0.25);
 
-        SummedSamples += Sampled;
-        Color.rgb = max(Color.rgb, Sampled.rgb);
-    }
-    
-	SummedSamples /= UI_BLUR_SAMPLES_MAX;
+	// Define control points for the cubic Bezier curve
+	float2 p0 = texcoord;
+	float2 p1 = texcoord + BlurDist * 0.33;
+	float2 p2 = texcoord + BlurDist * 0.66;
+	float2 p3 = texcoord + BlurDist;
 
-    float luminance = dot(SummedSamples.rgb, inColorSpace == 1 || inColorSpace == 2 ? lumCoeffHDR : lumCoeffsRGB);
-    float4 Finalcolor = 0.0;
-
-    float Gain = 0.0;
-    [branch]
+	float4 SummedSamples = 0;
+	float4 Sampled = 0;
+	float4 Color = tex2D(ReShade::BackBuffer, texcoord);
+	float2 NoiseOffset = 0;
+	if (abs(SampleDistVector) > UI_BLUR_BLUE_THRESHOLD)
+	{
+		NoiseOffset = BlueNoise(texcoord + SampleDist * (0 - HalfSampleSwitch)) * 0.001);
+		Sampled += float3(1, 0, 0);
+	}
+	
+	if (UI_BLUR_CURVE == 1)
+	{
+		// Blur Loop - Bezier
+		for (float s = 0.0; s <= 1.0; s += 1.0 / SamplesMinusOne)
+		{
+			float2 SampleCoord = BezierCurveCubic(p0, p1, p2, p3, s);
+			Sampled = tex2D(ReShade::BackBuffer, SampleCoord + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE * 2));
+			
+			if (UI_BLUR_BLUE_NOISE_DEBUG)
+			{
+				if (abs(SampleDistVector) > UI_BLUR_BLUE_THRESHOLD)
+				{
+					Sampled += float3(1, 0, 0);
+				}
+			}
+			// HDR10 BT.2020 PQ
+			[branch]
+			if (inColorSpace == 2)
+			{
+				Sampled.rgb = clamp(Sampled.rgb, -FLT16_MAX, FLT16_MAX);
+				Sampled.rgb = PQToLinear(Sampled.rgb);
+			}
+	
+			#if LINEAR_CONVERSION
+				Sampled.rgb = sRGBToLinear(Sampled.rgb);
+			#endif
+	
+			SummedSamples += Sampled;
+			Color.rgb = max(Color.rgb, Sampled.rgb);
+		}	
+		SummedSamples /= UI_BLUR_SAMPLES_MAX;
+	}
+	
+	else if (UI_BLUR_CURVE == 0)
+	{
+		// Blur Loop - Linear
+		for (int s = 0; s < UI_BLUR_SAMPLES_MAX; s++)
+		{
+			Sampled = tex2D(ReShade::BackBuffer, texcoord + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE));
+	
+			// HDR10 BT.2020 PQ
+			[branch]
+		    if (inColorSpace == 2)
+		    {
+		    	Sampled.rgb = clamp(Sampled.rgb, -FLT16_MAX, FLT16_MAX);
+		        Sampled.rgb = PQToLinear(Sampled.rgb);
+		    }
+	
+		    #if LINEAR_CONVERSION
+		        Sampled.rgb = sRGBToLinear(Sampled.rgb);
+		    #endif
+	
+			SummedSamples += Sampled / UI_BLUR_SAMPLES_MAX;
+			Color.rgb = max(Color.rgb, Sampled.rgb);
+		}
+	}
+	
+	float luminance = dot(SummedSamples.rgb, inColorSpace == 1 || inColorSpace == 2 ? lumCoeffHDR : lumCoeffsRGB);
+	float4 Finalcolor = 0.0;	
+	float Gain = 0.0;
+	
+	[branch]
 	    #if FAKE_GAIN
 	    [branch]
 	    if (inColorSpace == 1 || inColorSpace == 2)
-	        Gain = abs(pow(smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD * 12.5, luminance), UI_GAIN_POWER) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE);
+	        Gain = abs(smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD * 12.5, luminance) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE);
 	    else
-	        Gain = pow(smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD, luminance), UI_GAIN_POWER) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE;
+	        Gain = smoothstep(UI_GAIN_THRESHOLD - UI_GAIN_THRESHOLD_SMOOTH, UI_GAIN_THRESHOLD, luminance) * smoothstep(-UI_GAIN_THRESHOLD_SMOOTH, 1.0, luminance) * UI_GAIN_SCALE;
 	    #endif
 
-    [branch]
+	[branch]
 	    #if FAKE_GAIN
 	        Finalcolor = SummedSamples * (1.0 - Gain) + Color * Gain;
 	    #else
 	        Finalcolor = SummedSamples;
 	    #endif
 
-    [branch]
+	[branch]
 	    #if LINEAR_CONVERSION
 	        Finalcolor.rgb = LinearTosRGB(Finalcolor.rgb);
 	    #endif
 
-    // HDR10 BT.2020 PQ
-    if (inColorSpace == 2)
-    {
-        Finalcolor.rgb = fixNAN(Finalcolor.rgb);
-        Finalcolor.rgb = LinearToPQ(Finalcolor.rgb);
-    }
-    
-	//Finalcolor.rgb = GamutMapping(Finalcolor.rgb);
+	// HDR10 BT.2020 PQ
+	if (inColorSpace == 2)
+	{
+		Finalcolor.rgb = fixNAN(Finalcolor.rgb);
+		Finalcolor.rgb = LinearToPQ(Finalcolor.rgb);
+	}
 
-    // SDR
-    if (inColorSpace == 0)
-    {
-        Finalcolor *= 1.0 / max(dot(SummedSamples.rgb, lumCoeffsRGB), 1.0);
-        clamp(Finalcolor, 0.0, 1.0);
-    }
+	// SDR
+	if (inColorSpace == 0)
+	{
+		Finalcolor *= 1.0 / max(dot(SummedSamples.rgb, lumCoeffsRGB), 1.0);
+		clamp(Finalcolor, 0.0, 1.0);
+	}
 
-    #if DEPTH_ENABLE
-        Finalcolor = UI_SHOW_DEPTH ? DepthBufferScaled.xxxx : Finalcolor;
-    #endif
-	
-    return Finalcolor;
+	#if DEPTH_ENABLE
+		Finalcolor = UI_SHOW_DEPTH ? DepthBufferScaled.xxxx : Finalcolor;
+	#endif
+
+	return Finalcolor;
 }
 
 technique HDRMotionBlur <

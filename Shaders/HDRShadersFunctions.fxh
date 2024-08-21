@@ -61,6 +61,7 @@ uniform float2 mouse_delta < source = "mousedelta"; >;
 uniform float2 mouse_point < source = "mousepoint"; >;
 uniform bool overlay_open < source = "overlay_open"; >;
 
+
 /////////////////////////////////////////////
 //NOISE GENERATION
 /////////////////////////////////////////////
