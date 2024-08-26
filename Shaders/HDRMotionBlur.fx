@@ -326,10 +326,10 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 	if (UI_BLUR_CURVE == 1)
 	{
 		// Blur Loop - Bezier
-		for (float s = 0.0; s <= 1.0; s += 1.0 / SamplesMinusOne)
+		for (float s = 0; s < BLUR_SAMPLES; s++)
 		{
 			float2 SampleCoord = BezierCurveCubic(p0, p1, p2, p3, s);
-			Sampled = tex2D(ReShade::BackBuffer, SampleCoord + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE * 2));
+			Sampled = tex2D(ReShade::BackBuffer, texcoord + SampleDist + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE * 2));
 
 			if (UI_BLUR_BLUE_NOISE_DEBUG)
 			{
@@ -350,10 +350,9 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 				Sampled.rgb = sRGBToLinear_Safe(Sampled.rgb);
 			#endif
 
-			SummedSamples += Sampled;
+			SummedSamples += Sampled / BLUR_SAMPLES;
 			Color.rgb = max(Color.rgb, Sampled.rgb);
 		}
-		SummedSamples /= SamplesMinusOne;
 	}
 
 	else if (UI_BLUR_CURVE == 0)

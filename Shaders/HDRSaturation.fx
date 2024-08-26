@@ -94,7 +94,7 @@ uniform float UI_SATURATION_COLORS_LIMIT <
 	ui_tooltip = "Avoid clipping out color details.";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.70;
+> = 0.50;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT <
 	ui_category = "Saturation - Advanced";
