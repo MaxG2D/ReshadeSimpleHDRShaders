@@ -217,7 +217,24 @@ uniform bool UI_BLOOM_DEBUG_RAW
 		"\n" "\n" "Default: On";
 > = false;
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Dirt Texture Generation
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
 #if DIRT_TEXTURE
+uniform int UI_DIRT_SAMPLES
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Samples";
+	ui_category_closed = true;
+	ui_min = 10; ui_max = 1000;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_type = "slider";
+> = 150;
+
 uniform int UI_DIRT_OCTAVES
 <
 	ui_category = "Dirt Texture Generation";
@@ -427,7 +444,7 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	}
 
 	#if LINEAR_CONVERSION
-		color.rgb = sRGBToLinear(color.rgb);
+		color.rgb = sRGBToLinear_Safe(color.rgb);
 	#endif
 
 	// HDR Thresholding (ignoring 0.0-1.0 range)
@@ -442,7 +459,9 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	color.rgb *= UI_BLOOM_BRIGHTNESS;
 
 	// Bloom Saturation
-	color.rgb = max(AdaptiveSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
+	color.rgb = AdaptiveSaturation(color.rgb, UI_BLOOM_SATURATION);
+	color.rgb = WideColorsClamp(color.rgb);
+	color.rgb = GamutMapping(color.rgb);
 
 	return color;
 }
@@ -642,7 +661,7 @@ float3 NoiseTextureGenerationPS(float4 pixel : SV_Position, float2 texcoord : TE
 float4 DirtTextureGenerationPS(float4 pixel : SV_Position, float2 texcoord : TEXCOORD) : SV_Target {
 	float2 uv = texcoord * float2(1.0, 0.8);
 	float4 col = 0.0;
-	float iters = 150.0;
+	float iters = UI_DIRT_SAMPLES;
 	float radius = 0.01;
 
 	for (float i = 0.0; i < iters; i++) {

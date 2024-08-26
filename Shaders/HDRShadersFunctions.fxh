@@ -372,16 +372,17 @@ float SafeDivide(float a, float b)
 	return (b != 0.0f) ? a / b : 0.0f;
 }
 
-float SafePow(float base, float exponent)
+float SafePow(float input, float exponent) {
+  return sign(input) * pow(abs(input), exponent);
+}
+
+float3 SafePow(float3 color, float exponent) {
+  return sign(color) * pow(abs(color), exponent);
+}
+
+float FastPow(float base, float exponent)
 {
-	if (base < 0.0 && floor(exponent) != exponent)
-	{
-		return 0.0;
-	}
-	if (base == 0.0 && exponent < 0.0) {
-		return 0.0;
-	}
-	return pow(abs(base), exponent);
+	return exp(exponent * log(base));
 }
 
 float3 WideColorsClamp(float3 input)
@@ -412,52 +413,50 @@ float3 GamutMapping(float3 input)
 float sRGBToLinear(float color)
 {
 	const float a = 0.055f;
+	float result = color;
+	result = (color > 0.04045f) ? FastPow((color + a) / (1.0f + a), 2.4f) : color / 12.92f;
 
-	[flatten]
-	if (color <= 0.f)
-	{
-		// Do Nothing
-	}
-	else if (color <= 0.04045f)
-		color = color / 12.92f;
-	else
-		color = pow((color + a) / (1.0f + a), 2.4f);
-
-	return color;
+	return result;
 }
 
 float3 sRGBToLinear(float3 color)
 {
-	return float3(
-		sRGBToLinear(color.r),
-		sRGBToLinear(color.g),
-		sRGBToLinear(color.b));
+	return float3(sRGBToLinear(color.r), sRGBToLinear(color.g), sRGBToLinear(color.b));
 }
 
 float LinearTosRGB(float channel)
 {
-	if (channel <= 0.f)
-	{
-		channel = channel;
-	}
+	float result = channel;
+	result = (channel > 0.0031308f) ? 1.055f * FastPow(channel, 1.f / 2.4f) - 0.055f : channel * 12.92f;
 
-	float safechannel = channel;
-
-	if (safechannel <= 0.0031308f)
-	{
-		safechannel = safechannel * 12.92f;
-	}
-	else if (safechannel > 0.0031308f)
-	{
-		safechannel = 1.055f * pow(safechannel, 1.f / 2.4f) - 0.055f;
-	}
-
-	return safechannel;
+	return result;
 }
 
-float3 LinearTosRGB(float3 Color)
+float3 LinearTosRGB(float3 color)
 {
-	return float3(LinearTosRGB(Color.r), LinearTosRGB(Color.g), LinearTosRGB(Color.b));
+	return float3(LinearTosRGB(color.r), LinearTosRGB(color.g), LinearTosRGB(color.b));
+}
+
+float sRGBToLinearChannel_Safe(float channel)
+{
+	const float absChannel = abs(channel);
+	return (channel < 0.0) ? -sRGBToLinear(absChannel) : sRGBToLinear(absChannel);
+}
+
+float LinearTosRGBChannel_Safe(float channel)
+{
+	const float absChannel = abs(channel);
+	return (channel < 0.0) ? -LinearTosRGB(absChannel) : LinearTosRGB(absChannel);
+}
+
+float3 sRGBToLinear_Safe(float3 color)
+{
+	return float3(sRGBToLinearChannel_Safe(color.r), sRGBToLinearChannel_Safe(color.g), sRGBToLinearChannel_Safe(color.b));
+}
+
+float3 LinearTosRGB_Safe(float3 color)
+{
+	return float3(LinearTosRGBChannel_Safe(color.r), LinearTosRGBChannel_Safe(color.g), LinearTosRGBChannel_Safe(color.b));
 }
 
 float3 LinearToPQ(float3 linearCol)

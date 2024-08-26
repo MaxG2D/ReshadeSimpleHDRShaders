@@ -347,7 +347,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 			}
 
 			#if LINEAR_CONVERSION
-				Sampled.rgb = sRGBToLinear(Sampled.rgb);
+				Sampled.rgb = sRGBToLinear_Safe(Sampled.rgb);
 			#endif
 
 			SummedSamples += Sampled;
@@ -372,7 +372,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 		    }
 
 		    #if LINEAR_CONVERSION
-		        Sampled.rgb = sRGBToLinear(Sampled.rgb);
+		        Sampled.rgb = sRGBToLinear_Safe(Sampled.rgb);
 		    #endif
 
 			SummedSamples += Sampled / BLUR_SAMPLES;
@@ -439,8 +439,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 
 	[branch]
 	    #if LINEAR_CONVERSION
-	        Finalcolor.rgb = LinearTosRGB((Finalcolor.rgb));
-			//Finalcolor.rgb = GamutMapping(Finalcolor.rgb);
+	        Finalcolor.rgb = LinearTosRGB_Safe(Finalcolor.rgb);
 	    #endif
 
 	// HDR10 BT.2020 PQ
