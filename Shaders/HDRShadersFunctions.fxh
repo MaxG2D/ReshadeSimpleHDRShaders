@@ -37,6 +37,7 @@
 #endif
 
 #define PI 3.1415927410125732421875f
+#define TAU 6.2831854820251464843750f
 
 #define UINT_MAX 4294967295
 #define  INT_MAX 2147483647
@@ -47,6 +48,7 @@
 #define MAXRGB(Rgb) max(Rgb.r, max(Rgb.g, Rgb.b))
 #define MINRGB(Rgb) min(Rgb.r, min(Rgb.g, Rgb.b))
 #define lumCoeffHDR float3(0.2627f, 0.6780f, 0.0593f)
+#define lumCoeffAP1_RGB2Y float3(0.2722287168f, 0.6740817658f, 0.0536895174f)
 #define lumCoeffsRGB float3(0.299f, 0.587f, 0.114f)
 #define lumCoeffLinear float3(0.2126f, 0.7152f, 0.0722f)
 #define FP32_MIN asfloat(0x00800000)
@@ -54,13 +56,62 @@
 #define FLT16_MAX 65504.f
 
 uniform float frametime < source = "frametime"; >;
+//uniform int framecount < source = "framecount"; >;
 uniform float2 mouse_delta < source = "mousedelta"; >;
 uniform float2 mouse_point < source = "mousepoint"; >;
 uniform bool overlay_open < source = "overlay_open"; >;
 
+
 /////////////////////////////////////////////
+//NOISE GENERATION
+/////////////////////////////////////////////
+
+//HASH NOISE - VERSION 1
+
+#define ORTH_BASIS(z, basis) { \
+	z = normalize(z); \
+	float3 up = abs(z.y) > 0.999 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0); \
+	float3 x = normalize(cross(up, z)); \
+	float3 y = cross(z, x); \
+	basis = float3x3(x, y, z); \
+}
+#define ROT(a, rotMat) { \
+	float c = cos(a); \
+	float s = sin(a); \
+	rotMat = float2x2(c, -s, s, c); \
+}
+float3x3 orthBasis(float3 z) {
+	float3x3 basis;
+	ORTH_BASIS(z, basis);
+	return basis;
+}
+float2x2 _rot(float a) {
+	float2x2 rotMat;
+	ROT(a, rotMat);
+	return rotMat;
+}
+
+#define HASH_SCALE float3(0.1031, 0.1030, 0.0973)
+#define DOT_ADD float3(33.33, 33.33, 33.33)
+
+#define HASH33(p3, result) { \
+	p3 = frac(p3 * HASH_SCALE); \
+	p3 += dot(p3, p3.yxz + DOT_ADD); \
+	result = frac((p3.xxy + p3.yxx) * p3.zyx); \
+}
+
+float3 hash33(float3 p3) {
+	float3 result;
+	HASH33(p3, result);
+	return result;
+}
+
+
+//HASH NOISE - VERSION 2
+
+#define hash(n) (frac(sin(n) * 43758.5453123))
+
 //BLUE NOISE
-/////////////////////////////////////////////
 
 #define NoiseScale float2(12.9898, 78.2330)		//12.9898, 78.2330
 #define NoiseStrength (20000)	   					//43758.5453
@@ -103,190 +154,61 @@ static const float3 BT2020_WhitePoint = float3(0.3127, 0.3290, 0.3583);
 //STATIC CONST - GAUSSIAN KERNELS
 /////////////////////////////////////////////
 
+//Sigma 1
 static const float Weights5[5] =
 {
-  0.0613595978134402,
-  0.24477019552960988,
-  0.38774041331389975,
-  0.24477019552960988,
-  0.0613595978134402
+  0.0613595978134402f,
+  0.24477019552960988f,
+  0.38774041331389975f,
+  0.24477019552960988f,
+  0.0613595978134402f
 };
 
+//Sigma 1.4
 static const float Weights7[7] =
 {
-  0.005979789403041253,
-  0.060625762867880836,
-  0.2418428470867933,
-  0.38310320128456915,
-  0.2418428470867933,
-  0.060625762867880836,
-  0.005979789403041253
+  0.03050260371857921f,
+  0.10546420324961808f,
+  0.2218866945336653f,
+  0.28429299699627486f,
+  0.2218866945336653f,
+  0.10546420324961808f,
+  0.03050260371857921f
 };
 
+//Sigma 2.2
 static const float Weights11[11] =
 {
-  0.000003381766950162007f,
-  0.0002292725895775324f,
-  0.005977006954929783f,
-  0.0605975531721828f,
-  0.24173031550285376f,
-  0.38292494002701216f,
-  0.24173031550285376f,
-  0.0605975531721828f,
-  0.005977006954929783f,
-  0.0002292725895775324f,
-  0.000003381766950162007f
+  0.014642062351313795f,
+  0.03622922216280118f,
+  0.0732908252747015f,
+  0.1212268244846623f,
+  0.163954439140855f,
+  0.18131325317133223f,
+  0.163954439140855f,
+  0.1212268244846623f,
+  0.0732908252747015f,
+  0.03622922216280118f,
+  0.014642062351313795f
 };
 
+//Sigma 2.6
 static const float Weights13[13] =
 {
-  0.000002260003935204924f,
-  0.00008615416577823069f,
-  0.0016805913296610252f,
-  0.016841326223814207f,
-  0.08703948648194361f,
-  0.23281133341733654f,
-  0.3230776967550624f,
-  0.23281133341733654f,
-  0.08703948648194361f,
-  0.016841326223814207f,
-  0.0016805913296610252f,
-  0.00008615416577823069f,
-  0.000002260003935204924f
+  0.011311335636445246f,
+  0.02511527845053647f,
+  0.04823491379898901f,
+  0.08012955958832953f,
+  0.11514384884108936f,
+  0.14312253396755542f,
+  0.1538850594341098f,
+  0.14312253396755542f,
+  0.11514384884108936f,
+  0.08012955958832953f,
+  0.04823491379898901f,
+  0.02511527845053647f,
+  0.011311335636445246f
 };
-
-/////////////////////////////////////////////
-//NAN-INF FIX
-/////////////////////////////////////////////
-
-bool IsNAN(const float input)
-{
-	if (isnan(input) || isinf(input))
-		return true;
-	else
-		return false;
-}
-
-float fixNAN(const float input)
-{
-	if (IsNAN(input))
-		return 0.f;
-	else
-		return input;
-}
-
-float3 fixNAN(float3 input)
-{
-	if (IsNAN(input.r))
-		input.r = 0.f;
-	else if (IsNAN(input.g))
-		input.g = 0.f;
-	else if (IsNAN(input.b))
-		input.b = 0.f;
-
-	return input;
-}
-
-float SafeDivide(float a, float b)
-{
-	return (b != 0.0f) ? a / b : 0.0f;
-}
-
-/////////////////////////////////////////////
-//CONVERSIONS - LUMA
-/////////////////////////////////////////////
-
-float Luminance(float3 color, float3 lumCoeff)
-{
-	return dot(color, lumCoeff);
-}
-
-float sRGBToLinear(float color)
-{
-	const float a = 0.055f;
-
-	[flatten]
-	if (color >= 1.f || color <= 0.f)
-	{
-		// Nothing to do
-	}
-	else if (color <= 0.04045f)
-		color = color / 12.92f;
-	else
-		color = pow((color + a) / (1.0f + a), 2.4f);
-
-	return color;
-}
-
-float3 sRGBToLinear(float3 color)
-{
-	return float3(
-		sRGBToLinear(color.r),
-		sRGBToLinear(color.g),
-		sRGBToLinear(color.b));
-}
-
-float LinearTosRGB(float channel)
-{
-	if (channel <= 0.0031308f)
-	{
-		channel = channel * 12.92f;
-	}
-	else
-	{
-		channel = 1.055f * pow(channel, 1.f / 2.4f) - 0.055f;
-	}
-	return channel;
-}
-
-float3 LinearTosRGB(float3 Color)
-{
-	return float3(LinearTosRGB(Color.r), LinearTosRGB(Color.g), LinearTosRGB(Color.b));
-}
-
-float3 LinearToPQ(float3 linearCol)
-{
-	linearCol /= HDR10_max_nits;
-
-	float3 colToPow = pow(linearCol, PQ_constant_N);
-	float3 numerator = PQ_constant_C1 + PQ_constant_C2 * colToPow;
-	float3 denominator = 1.f + PQ_constant_C3 * colToPow;
-	float3 pq = pow(numerator / denominator, PQ_constant_M);
-
-	return pq;
-}
-
-float3 PQToLinear(float3 ST2084)
-{
-	float3 colToPow = pow(ST2084, 1.0f / PQ_constant_M);
-	float3 numerator = max(colToPow - PQ_constant_C1, 0.f);
-	float3 denominator = PQ_constant_C2 - (PQ_constant_C3 * colToPow);
-	//denominator = max(denominator, 1e-10f);
-	float3 linearColor = pow(numerator / denominator, 1.f / PQ_constant_N);
-
-	linearColor *= HDR10_max_nits;
-
-	return linearColor;
-}
-
-float RangeCompressPow(float x, float Pow)
-{
-	return 1.0 - pow(exp(-x), Pow);
-}
-
-float LumaCompress(float val, float MaxValue, float ShoulderStart, float Pow)
-{
-	float v2 = ShoulderStart + (MaxValue - ShoulderStart) * RangeCompressPow((val - ShoulderStart) / (MaxValue - ShoulderStart), Pow);
-	return val <= ShoulderStart ? val : v2;
-}
-
-float3 DisplayMapColor (float3 color, float luma, float HdrMaxNits)
-{
-	luma = Luminance(color, lumCoeffHDR);
-	float maxOutputLuminance = HdrMaxNits / sRGB_max_nits;
-	float compressedHDRLuminance = LumaCompress(luma, maxOutputLuminance, maxOutputLuminance, 1);
-	return color * compressedHDRLuminance / luma;
-}
 
 /////////////////////////////////////////////
 //CONVERSIONS - CHROMA
@@ -316,19 +238,15 @@ static const float3x3 D60_2_D65_CAT = float3x3(
 	0.987224, -0.00611327, 0.0159533,
 	-0.00759836, 1.00186, 0.00533002,
 	0.00307257, -0.00509595, 1.08168);
-static const float3 AP1_RGB2Y = float3(
-	0.2722287168,
-	0.6740817658,
-	0.0536895174 );
 static const float3x3 Wide_2_XYZ_MAT = float3x3(
 	0.5441691, 0.2395926, 0.1666943,
 	0.2394656, 0.7021530, 0.0583814,
 	-0.0023439, 0.0361834, 1.0552183);
-static const float3x3 BT709_2_BT2020 = float3x3(
+static const float3x3 BT709_2_BT2020_MAT = float3x3(
 	0.627401924722236, 0.329291971755002, 0.0433061035227622,
 	0.0690954897392608, 0.919544281267395, 0.0113602289933443,
 	0.0163937090881632, 0.0880281623979006, 0.895578128513936);
-static const float3x3 BT2020_2_BT709 = float3x3(
+static const float3x3 BT2020_2_BT709_MAT = float3x3(
 	1.66049621914783, -0.587656444131135, -0.0728397750166941,
 	-0.124547095586012, 1.13289510924730, -0.00834801366128445,
 	-0.0181536813870718, -0.100597371685743, 1.11875105307281);
@@ -383,13 +301,13 @@ float3 AP1_2_XYZ_MAT(float3 color)
 }
 
 
-float3 BT709_2_BT2020(float3 color)
+float3 BT709_2_BT2020_MAT(float3 color)
 {
-	return mul(BT709_2_BT2020, color);
+	return mul(BT709_2_BT2020_MAT, color);
 }
-float3 BT2020_2_BT709(float3 color)
+float3 BT2020_2_BT709_MAT(float3 color)
 {
-	return mul(BT2020_2_BT709, color);
+	return mul(BT2020_2_BT709_MAT, color);
 }
 
 
@@ -410,6 +328,180 @@ float3 AP1_2_BT2020_MAT(float3 color)
 float3 BT2020_2_AP1_MAT(float3 color)
 {
 	return mul(BT2020_2_AP1_MAT, color);
+}
+
+/////////////////////////////////////////////
+//NAN-INF FIX
+/////////////////////////////////////////////
+
+float Luminance(float3 color, float3 lumCoeff)
+{
+	return dot(color, lumCoeff);
+}
+
+bool IsNAN(const float input)
+{
+	if (isnan(input) || isinf(input))
+		return true;
+	else
+		return false;
+}
+
+float fixNAN(const float input)
+{
+	if (IsNAN(input))
+		return 0.f;
+	else
+		return input;
+}
+
+float3 fixNAN(float3 input)
+{
+	if (IsNAN(input.r))
+		input.r = 0.f;
+	else if (IsNAN(input.g))
+		input.g = 0.f;
+	else if (IsNAN(input.b))
+		input.b = 0.f;
+
+	return input;
+}
+
+float SafeDivide(float a, float b)
+{
+	return (b != 0.0f) ? a / b : 0.0f;
+}
+
+float SafePow(float base, float exponent)
+{
+	if (base < 0.0 && floor(exponent) != exponent)
+	{
+		return 0.0;
+	}
+	if (base == 0.0 && exponent < 0.0) {
+		return 0.0;
+	}
+	return pow(abs(base), exponent);
+}
+
+float3 WideColorsClamp(float3 input)
+{
+	const float3x3 sRGB_2_AP1 = mul(XYZ_2_AP1_MAT, mul(D65_2_D60_CAT, sRGB_2_XYZ_MAT));
+	float3 ColorAP1 = mul(sRGB_2_AP1, input);
+
+	float LumaAP1 = Luminance(ColorAP1, lumCoeffAP1_RGB2Y);
+	if (LumaAP1 <= 0.f)
+	{
+		return input;
+	}
+	return input;
+}
+
+float3 GamutMapping(float3 input)
+{
+	input = BT709_2_BT2020_MAT(input);
+	input = max(input, 0.f);
+	input = BT2020_2_BT709_MAT(input);
+	return input;
+}
+
+/////////////////////////////////////////////
+//CONVERSIONS - LUMA
+/////////////////////////////////////////////
+
+float sRGBToLinear(float color)
+{
+	const float a = 0.055f;
+
+	[flatten]
+	if (color <= 0.f)
+	{
+		// Do Nothing
+	}
+	else if (color <= 0.04045f)
+		color = color / 12.92f;
+	else
+		color = pow((color + a) / (1.0f + a), 2.4f);
+
+	return color;
+}
+
+float3 sRGBToLinear(float3 color)
+{
+	return float3(
+		sRGBToLinear(color.r),
+		sRGBToLinear(color.g),
+		sRGBToLinear(color.b));
+}
+
+float LinearTosRGB(float channel)
+{
+	if (channel <= 0.f)
+	{
+		channel = channel;
+	}
+
+	float safechannel = channel;
+
+	if (safechannel <= 0.0031308f)
+	{
+		safechannel = safechannel * 12.92f;
+	}
+	else if (safechannel > 0.0031308f)
+	{
+		safechannel = 1.055f * pow(safechannel, 1.f / 2.4f) - 0.055f;
+	}
+
+	return safechannel;
+}
+
+float3 LinearTosRGB(float3 Color)
+{
+	return float3(LinearTosRGB(Color.r), LinearTosRGB(Color.g), LinearTosRGB(Color.b));
+}
+
+float3 LinearToPQ(float3 linearCol)
+{
+	linearCol /= HDR10_max_nits;
+
+	float3 colToPow = pow(linearCol, PQ_constant_N);
+	float3 numerator = PQ_constant_C1 + PQ_constant_C2 * colToPow;
+	float3 denominator = 1.f + PQ_constant_C3 * colToPow;
+	float3 pq = pow(numerator / denominator, PQ_constant_M);
+
+	return pq;
+}
+
+float3 PQToLinear(float3 ST2084)
+{
+	float3 colToPow = pow(ST2084, 1.0f / PQ_constant_M);
+	float3 numerator = max(colToPow - PQ_constant_C1, 0.f);
+	float3 denominator = PQ_constant_C2 - (PQ_constant_C3 * colToPow);
+	//denominator = max(denominator, 1e-10f);
+	float3 linearColor = pow(numerator / denominator, 1.f / PQ_constant_N);
+
+	linearColor *= HDR10_max_nits;
+
+	return linearColor;
+}
+
+float RangeCompressPow(float x, float Pow)
+{
+	return 1.0 - pow(exp(-x), Pow);
+}
+
+float LumaCompress(float val, float MaxValue, float ShoulderStart, float Pow)
+{
+	float v2 = ShoulderStart + (MaxValue - ShoulderStart) * RangeCompressPow((val - ShoulderStart) / (MaxValue - ShoulderStart), Pow);
+	return val <= ShoulderStart ? val : v2;
+}
+
+float3 DisplayMapColor (float3 color, float luma, float HdrMaxNits)
+{
+	luma = Luminance(color, lumCoeffHDR);
+	float maxOutputLuminance = HdrMaxNits / sRGB_max_nits;
+	float compressedHDRLuminance = LumaCompress(luma, maxOutputLuminance, maxOutputLuminance, 1);
+	return color * compressedHDRLuminance / luma;
 }
 
 /////////////////////////////////////////////
@@ -530,7 +622,7 @@ float2 ProjectOnto(float2 a, float2 b)
 float4 BoxBlur(sampler s, float2 uv, float blurSize, int DownsampleAmount)
 {
 	float4 color = float4(0.0, 0.0, 0.0, 0.0);
-	int samples = 3; // Number of samples in each direction (total samples will be (2*samples + 1)^2)
+	int samples = 3;
 
 	for (int x = -samples; x <= samples; ++x)
 	{
@@ -541,7 +633,6 @@ float4 BoxBlur(sampler s, float2 uv, float blurSize, int DownsampleAmount)
 		}
 	}
 
-	// Average the accumulated color
 	float sampleCount = (2 * samples + 1) * (2 * samples + 1);
 	return color / sampleCount;
 }
@@ -550,7 +641,7 @@ float4 CircularBlur(sampler s, float2 uv, float blurSize, int sampleCount, int D
 {
 	float4 color = float4(0.0, 0.0, 0.0, 0.0);
 	float radius = blurSize;
-	float sampleAngle = 2.0 * 3.14159265359 / sampleCount; // Divide circle into equal segments
+	float sampleAngle = 2.0 * 3.14159265359 / sampleCount;
 
 	for (int i = 0; i < sampleCount; ++i)
 	{
@@ -564,7 +655,109 @@ float4 CircularBlur(sampler s, float2 uv, float blurSize, int sampleCount, int D
 
 float GaussianSimple(float x, float sigma)
 {
-	return exp(-0.5 * (x * x) / (sigma * sigma)) / (sigma * sqrt(2.0 * 3.14159265358979323846));
+	return exp(-0.5 * (x * x) / (sigma * sigma));
+}
+
+/////////////////////////////////////////////
+//MISC - SAMPLING
+/////////////////////////////////////////////
+
+float2 CatmullRom(float2 p0, float2 p1, float2 p2, float2 p3, float t, float tension)
+{
+	float2 a = 2.0 * p1;
+	float2 b = p2 - p0;
+	float2 c = 2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3;
+	float2 d = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
+
+	float2 result = 0.5 * (a + (b * t) + (c * t * t) + (d * t * t * t));
+
+	return lerp(p1, result, tension);
+}
+
+float2 Interpolate(float2 start, float2 end, float t)
+{
+	return start * (1.0 - t) + end * t;
+}
+
+float2 BezierCurve(float2 p0, float2 p1, float2 p2, float t)
+{
+	float2 a = Interpolate(p0, p1, t);
+	float2 b = Interpolate(p1, p2, t);
+	return Interpolate(a, b, t);
+}
+
+float2 BezierCurveCubic(float2 p0, float2 p1, float2 p2, float2 p3, float t)
+{
+	float u = 1.0 - t;
+	float tt = t * t;
+	float uu = u * u;
+	float uuu = uu * u;
+	float ttt = tt * t;
+
+	float2 p = uuu * p0; // (1-t)^3 * p0
+	p += 3.0 * uu * t * p1; // 3 * (1-t)^2 * t * p1
+	p += 3.0 * u * tt * p2; // 3 * (1-t) * t^2 * p2
+	p += ttt * p3; // t^3 * p3
+
+	return p;
+}
+
+float2 LagrangeInterpolation(float2 p0, float2 p1, float2 p2, float2 p3, float t)
+{
+	float2 result = float2(0.0, 0.0);
+	float L0 = (1 - t) * (1 - t) * (1 - t) / 6.0;
+	float L1 = (3 * t * t * t - 6 * t * t + 4) / 6.0;
+	float L2 = (-3 * t * t * t + 3 * t * t + 3 * t + 1) / 6.0;
+	float L3 = t * t * t / 6.0;
+
+	result = L0 * p0 + L1 * p1 + L2 * p2 + L3 * p3;
+
+	return result;
+}
+
+float2 ClampMotionVector(float2 motionVector, float maxMagnitude)
+{
+	float magnitude = length(motionVector);
+	if (magnitude > maxMagnitude)
+	{
+		motionVector = normalize(motionVector) * maxMagnitude;
+	}
+	return motionVector;
+}
+
+float4 AnisotropicSample(sampler2D tex, float2 uv, float2 offset)
+{
+	float2 sampleOffset = offset * 0.25;
+	float4 sample1 = tex2D(tex, uv + sampleOffset);
+	float4 sample2 = tex2D(tex, uv - sampleOffset);
+	return (sample1 + sample2) * 0.5;
+}
+
+float smoothLerp(float a, float b, float t)
+{
+	t = clamp(t, 0.0, 1.0);
+	static const float smoothness = 2.0;
+	t = t * t * (smoothness * (2.0 - t) - (smoothness - 1.0));
+	t = clamp(t, 0.0, 1.0);
+	return lerp(a, b, t);
+}
+
+float smootherLerp(float a, float b, float t)
+{
+	t = clamp(t, 0.0, 1.0);
+	static const float smoothness = 4.0;
+	t = t * t * (smoothness * (2.0 - t) - (smoothness - 1.0));
+	t = clamp(t, 0.0, 1.0);
+	return lerp(a, b, t);
+}
+
+float3 smootherLerp(float3 a, float3 b, float t)
+{
+	t = clamp(t, 0.0, 1.0);
+	static const float smoothness = 4.0;
+	t = t * t * t * t * (smoothness * (2.0 - t) - (smoothness - 1.0));
+	t = clamp(t, 0.0, 1.0);
+	return lerp(a, b, t);
 }
 
 /////////////////////////////////////////////
@@ -798,6 +991,53 @@ float3 YUVtoRGB(float3 yuv)
 //SATURATION - FUNCTIONS
 /////////////////////////////////////////////
 
+float3 ExpandGamut(float3 HDRColor, float ExpandGamut)
+{
+	const float3x3 sRGB_2_AP1 = mul(XYZ_2_AP1_MAT, mul(D65_2_D60_CAT, sRGB_2_XYZ_MAT));
+	const float3x3 AP1_2_sRGB = mul(XYZ_2_sRGB_MAT, mul(D60_2_D65_CAT, AP1_2_XYZ_MAT));
+	const float3x3 Wide_2_AP1 = mul(XYZ_2_AP1_MAT, Wide_2_XYZ_MAT);
+	const float3x3 ExpandMat = mul(Wide_2_AP1, AP1_2_sRGB);
+
+	float3 ColorAP1 = mul(sRGB_2_AP1, HDRColor);
+	ColorAP1 = WideColorsClamp(ColorAP1);
+	float LumaAP1 = Luminance(ColorAP1, lumCoeffAP1_RGB2Y);
+	float3 ChromaAP1 = ColorAP1 / LumaAP1;
+
+	float ChromaDistSqr = dot(ChromaAP1 - 1, ChromaAP1 - 1);
+	float ExpandAmount = (1 - exp2(-4 * ChromaDistSqr)) * (1 - exp2(-4 * ExpandGamut * LumaAP1 * LumaAP1));
+	//float ExpandAmount = (1 - exp2(-1 * ChromaDistSqr)) * (1 - exp2(-1 * ExpandGamut * LumaAP1));  // Less extreme version
+	//float ExpandAmount = 1 - exp2(-ExpandGamut * ChromaDistSqr); // More uniform
+
+	float3 ColorExpand = mul(ExpandMat, mul(LumaAP1, ChromaAP1));
+	ColorAP1 = lerp(ColorAP1, ColorExpand, ExpandAmount);
+	HDRColor = mul(AP1_2_sRGB, ColorAP1);
+
+	return HDRColor;
+}
+
+float3 SaturationBrightnessLimiter(float3 originalColor, float3 saturatedColor)
+{
+	float maxChannel = max(max(originalColor.r, originalColor.g), originalColor.b);
+	float saturatedMaxChannel = max(max(saturatedColor.r, saturatedColor.g), saturatedColor.b);
+	if (saturatedMaxChannel > maxChannel)
+	{
+		saturatedColor *= maxChannel / saturatedMaxChannel;
+	}
+
+	return saturatedColor;
+}
+
+float BrightnessLimiter(float3 originalColor, float Output)
+{
+	float maxChannel = max(max(originalColor.r, originalColor.g), originalColor.b);
+	if (Output > maxChannel)
+	{
+		Output = maxChannel;
+	}
+
+	return Output;
+}
+
 float3 LumaSaturation(float3 color, float amount)
 {
 	float luminanceHDR = Luminance(color, lumCoeffHDR);
@@ -872,9 +1112,17 @@ float3 AdaptiveSaturation(float3 color, float amount)
 	float3 colorDiff = color - gray;
 	float initialSaturation = length(colorDiff) / max(luminanceHDR, 1e-5);
 	float modulation = smoothstep(0.0, 1.0, initialSaturation);
-	float factor = 1.0 + (amount - 1.0) * (modulation);
+	float factor = 1.0 + (amount - 1.0) * modulation;
+	float3 saturatedColor = gray + colorDiff * factor;
 
-	return lerp(gray, color, factor);
+	float maxChannel = max(max(color.r, color.g), color.b);
+	float saturatedMaxChannel = max(max(saturatedColor.r, saturatedColor.g), saturatedColor.b);
+	if (saturatedMaxChannel > maxChannel)
+	{
+		saturatedColor *= maxChannel / saturatedMaxChannel;
+	}
+
+	return saturatedColor;
 }
 
 float3 OKLABSaturation(float3 color, float amount)
@@ -884,34 +1132,6 @@ float3 OKLABSaturation(float3 color, float amount)
 	oklch.y *= amount;
 	oklab = oklch_to_oklab(oklch);
 	return OKLabToRGB(oklab);
-}
-
-float3 ExpandGamut(float3 HDRColor, float ExpandGamut)
-{
-	const float3x3 sRGB_2_AP1 = mul(XYZ_2_AP1_MAT, mul(D65_2_D60_CAT, sRGB_2_XYZ_MAT));
-	const float3x3 AP1_2_sRGB = mul(XYZ_2_sRGB_MAT, mul(D60_2_D65_CAT, AP1_2_XYZ_MAT));
-	const float3x3 Wide_2_AP1 = mul(XYZ_2_AP1_MAT, Wide_2_XYZ_MAT);
-	const float3x3 ExpandMat = mul(Wide_2_AP1, AP1_2_sRGB);
-
-	float3 ColorAP1 = mul(sRGB_2_AP1, HDRColor);
-
-	float LumaAP1 = dot(ColorAP1, AP1_RGB2Y);
-	if (LumaAP1 <= 0.f)
-	{
-		return HDRColor;
-	}
-	float3 ChromaAP1 = ColorAP1 / LumaAP1;
-
-	float ChromaDistSqr = dot(ChromaAP1 - 1, ChromaAP1 - 1);
-	//float ExpandAmount = (1 - exp2(-4 * ChromaDistSqr)) * (1 - exp2(-4 * ExpandGamut * LumaAP1 * LumaAP1));
-	//float ExpandAmount = (1 - exp2(-1 * ChromaDistSqr)) * (1 - exp2(-1 * ExpandGamut * LumaAP1));  // Less extreme version
-	float ExpandAmount = 1 - exp2(-ExpandGamut * ChromaDistSqr); // More uniform
-
-	float3 ColorExpand = mul(ExpandMat, mul(LumaAP1, ChromaAP1));
-	ColorAP1 = lerp(ColorAP1, ColorExpand, ExpandAmount);
-	HDRColor = mul(AP1_2_sRGB, ColorAP1);
-
-	return HDRColor;
 }
 
 /////////////////////////////////////////////

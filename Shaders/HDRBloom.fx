@@ -18,12 +18,25 @@
 #define ADDITIONAL_BLUR_PASS 1
 #endif
 
+// Good range is between 12-24
+#ifndef ADDITIONAL_BLUR_SAMPLES
+#define ADDITIONAL_BLUR_SAMPLES 12
+#endif
+
 #ifndef DOWNSAMPLE
 #define DOWNSAMPLE 4
 #endif
 
 #ifndef LINEAR_CONVERSION
 #define LINEAR_CONVERSION 0
+#endif
+
+#ifndef DIRT_TEXTURE
+#define DIRT_TEXTURE 0
+#endif
+
+#ifndef DIRT_TEXTURE_TWEAKING
+#define DIRT_TEXTURE_TWEAKING 0
 #endif
 
 #if DOWNSAMPLE < 1
@@ -40,6 +53,12 @@ static const int
 static const int
 	None = 0,
 	Reinhard = 1;
+
+static const int
+	Medium = 0,
+	High = 1,
+	Ultra = 2,
+	Overkill = 3;
 
 static const int2 DownsampleAmount = DOWNSAMPLE;
 
@@ -89,6 +108,32 @@ uniform float UI_BLOOM_SATURATION
 	ui_max = 10.0;
 > = 1.0;
 
+#if DIRT_TEXTURE
+uniform float UI_DIRT_THRESHOLD
+<
+	ui_category = "Bloom - Dirt";
+	ui_label = "Dirt Threshold";
+	ui_tooltip =
+		"The threshold of dirt texture to apply to the image"
+		"\n" "\n" "Default: 0.9";
+	ui_type = "slider";
+	ui_min = 0.0;
+	ui_max = 1.0;
+> = 0.80;
+
+uniform float UI_DIRT_BRIGHTNESS
+<
+	ui_category = "Bloom - Dirt";
+	ui_label = "Dirt Brightness";
+	ui_tooltip =
+		"Scalar of the dirt texture brightness."
+		"\n" "\n" "Default: 200.0";
+	ui_type = "slider";
+	ui_min = 0.0;
+	ui_max = 200.0;
+> = 50.0;
+#endif
+
 uniform int UI_SAMPLE_COUNT
 <
 	ui_category = "Bloom - Advanced";
@@ -98,8 +143,8 @@ uniform int UI_SAMPLE_COUNT
 	"\n" "\n" "Default: Medium";
 	ui_category_closed = true;
 	ui_type = "combo";
-	ui_items = "Medium\0High\0Ultra\0Overkill\0";
-> = 0;
+	ui_items = "Medium\0High\0Ultra\0Overkill\0";  // 0 - Medium, 1 - High, 2 - Ultra, 3 - Overkill
+> = Medium;
 
 uniform int UI_BLOOM_INV_TMO
 <
@@ -122,7 +167,7 @@ uniform float UI_BLOOM_BLUR_SIZE
 		"\n" "\n" "Default: 0.75";
 	ui_category_closed = true;
 	ui_type = "slider";
-	ui_min = 0.1;
+	ui_min = 0.5;
 	ui_max = 4.0;
 > = 2.0;
 
@@ -139,7 +184,7 @@ uniform float UI_BLOOM_SECOND_BLUR_SIZE
 	ui_type = "slider";
 	ui_min = 0.0;
 	ui_max = 10.0;
-> = 6.0;
+> = 5.0;
 #endif
 
 uniform int UI_BLOOM_BLENDING_TYPE
@@ -172,6 +217,114 @@ uniform bool UI_BLOOM_DEBUG_RAW
 		"\n" "\n" "Default: On";
 > = false;
 
+#if DIRT_TEXTURE
+uniform int UI_DIRT_OCTAVES
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Octaves";
+	ui_category_closed = true;
+	ui_min = 1; ui_max = 8;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_type = "slider";
+> = 3;
+
+uniform int UI_DIRT_SHOW
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Debug";
+	ui_category_closed = true;
+	ui_min = 0; ui_max = 1;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_type = "slider";
+> = 0;
+
+uniform float UI_DIRT_AMPLITUDE
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Amplitude";
+	ui_category_closed = true;
+	ui_min = 0.0; ui_max = 1.0;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 0.55;
+
+uniform float UI_DIRT_SEED
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Seed";
+	ui_category_closed = true;
+	ui_min = 0.0; ui_max = 6.28;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 1.61;
+
+uniform float UI_DIRT_WARP
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Distort";
+	ui_category_closed = true;
+	ui_min = 0.0; ui_max = 2.0;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 0.40;
+
+uniform float UI_DIRT_UVSCALE
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise UV Size";
+	ui_category_closed = true;
+	ui_min = 0.5; ui_max = 10.0;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 1.25;
+
+uniform float UI_DIRT_POWER
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Power";
+	ui_category_closed = true;
+	ui_min = 1.0; ui_max = 10.0;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 4.00;
+
+uniform float UI_DIRT_CLAMP
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Brightness";
+	ui_category_closed = true;
+	ui_min = 0.01; ui_max = 1.0;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.01;
+	ui_type = "slider";
+> = 0.05;
+
+uniform float UI_DIRT_SCRATCHES
+<
+	ui_category = "Dirt Texture Generation";
+	ui_label = "Noise Scratches Brightness";
+	ui_category_closed = true;
+	ui_min = 0.01; ui_max = 1.0;
+	ui_label = "";
+	ui_tooltip = "";
+	ui_step = 0.001;
+	ui_type = "slider";
+> = 0.035;
+#endif
+
 // Textures
 texture BloomCombinedTex
 {
@@ -188,6 +341,37 @@ sampler BloomCombined
 		MipFilter = LINEAR;
 		AddressU = Border;
 		AddressV = Border;
+};
+
+texture DirtTexture
+{
+		Width = BUFFER_WIDTH;
+		Height = BUFFER_HEIGHT;
+		Format = R16F;
+};
+sampler SamplerDirtTexture
+{
+		Texture = DirtTexture;
+		MinFilter = LINEAR;
+		MagFilter = LINEAR;
+		MipFilter = LINEAR;
+		AddressU = Border;
+		AddressV = Border;
+};
+
+texture NoiseTexture
+{
+		Width = BUFFER_WIDTH;
+		Height = BUFFER_HEIGHT;
+		Format = R16F;
+};
+sampler SamplerNoiseTexture
+{
+	    Texture = NoiseTexture;
+	    MinFilter = LINEAR;
+	    MagFilter = LINEAR;
+		AddressU = Clamp;
+		AddressV = Clamp;
 };
 
 #define DECLARE_BLOOM_TEXTURE(TexName, Downscale) \
@@ -218,32 +402,21 @@ sampler BloomCombined
 	DECLARE_BLOOM_TEXTURE(Bloom4, 16);
 	DECLARE_BLOOM_TEXTURE(Bloom5, 32);
 	DECLARE_BLOOM_TEXTURE(Bloom6, 64);
+	DECLARE_BLOOM_TEXTURE(Bloom7, 128);
 
 // Preprocessing Pixels Shader
 float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
 {
 	float4 color = tex2D(ReShade::BackBuffer, texcoord);
 	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
+
 	uint inColorSpace = UI_IN_COLOR_SPACE;
 	// HDR10 BT.2020 PQ
 	if (inColorSpace == 2)
 	{
 		color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
-		//color.rgb = BT2020_2_BT709(color.rgb);
 		color.rgb = PQToLinear(color.rgb);
 	}
-
-	// HDR Thresholding (ignoring 0.0-1.0 range)
-	#if REMOVE_SDR_VALUES
-		if (Luminance(color.rgb, lumCoeffHDR) < 1.f)
-		{
-			color.rgb = 0.f;
-		}
-	#endif
-
-	#if LINEAR_CONVERSION
-		color.rgb = sRGBToLinear(color.rgb);
-	#endif
 
 	// Inv Tonemapping
 	if (UI_BLOOM_INV_TMO == 0)
@@ -253,13 +426,24 @@ float4 PreProcessPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		color.rgb = Reinhard_Inverse(color.rgb);
 	}
 
+	#if LINEAR_CONVERSION
+		color.rgb = sRGBToLinear(color.rgb);
+	#endif
+
+	// HDR Thresholding (ignoring 0.0-1.0 range)
+	#if REMOVE_SDR_VALUES
+		if (Luminance(color.rgb, lumCoeffHDR) < 1.f)
+		{
+			color.rgb = 0.f;
+		}
+	#endif
+
 	// Bloom Brightness
 	color.rgb *= UI_BLOOM_BRIGHTNESS;
 
 	// Bloom Saturation
-	color.rgb = max(LumaSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
+	color.rgb = max(AdaptiveSaturation(color.rgb, UI_BLOOM_SATURATION), 0.f);
 
-	color.rgb = clamp(color.rgb, -FLT16_MAX, FLT16_MAX);
 	return color;
 }
 
@@ -295,11 +479,10 @@ float4 GaussianBlur(sampler SampledTexture, float2 TexCoord, float2 Direction, f
 
 	float4 color = 0.0;
 	static const float halfSamples = (kernelSize - 1) * 0.5;
-
+	static const float2 GaussBlur = Direction * GetPixelSize() * DownsampleAmount * (BlurSize / DownsampleAmount) * sqrt(2.0 * PI) / (SampleCount * 0.5 + 1);
 	for (int i = 0; i < kernelSize; ++i)
 	{
-		float2 offset = Direction * GetPixelSize() * DownsampleAmount *
-		(BlurSize / DownsampleAmount) * sqrt(2.0 * PI) * (i - halfSamples);
+		float2 offset = GaussBlur * (i - halfSamples);
 
 		color += (tex2D(SampledTexture, TexCoord - offset).rgba * weights[i]);
 	}
@@ -324,7 +507,8 @@ float4 GaussianBlur(sampler SampledTexture, float2 TexCoord, float2 Direction, f
 	DEFINE_BLUR_FUNCTIONS(8, 9, Bloom3, 16);
 	DEFINE_BLUR_FUNCTIONS(10, 11, Bloom4, 32);
 	DEFINE_BLUR_FUNCTIONS(12, 13, Bloom5, 64);
-	DEFINE_BLUR_FUNCTIONS(13, 14, Bloom6, 256)
+	DEFINE_BLUR_FUNCTIONS(14, 15, Bloom6, 128);
+	DEFINE_BLUR_FUNCTIONS(16, 17, Bloom7, 256)
 
 // Merging all bloom textures so far into a single texture
 float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_Target
@@ -333,14 +517,15 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 
 #if ADDITIONAL_BLUR_PASS
 	MergedBloom +=
-		CircularBlur(Bloom0, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.2, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom1, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.4, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom2, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.8, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom3, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 1.6, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom4, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 3.2, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom5, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 6.4, 12, DownsampleAmount.x) +
-		CircularBlur(Bloom6, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 12.8, 12, DownsampleAmount.x);
-	MergedBloom /= 7;
+		CircularBlur(Bloom0, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.2, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom1, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.4, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom2, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 0.8, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom3, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 1.6, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom4, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 3.2, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom5, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 6.4, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom6, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 12.8, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x) +
+		CircularBlur(Bloom7, texcoord, UI_BLOOM_SECOND_BLUR_SIZE * 25.6, ADDITIONAL_BLUR_SAMPLES, DownsampleAmount.x);
+	MergedBloom /= 8;
 #else
 	MergedBloom +=
 		tex2D(Bloom0, texcoord) +
@@ -349,8 +534,9 @@ float4 CombineBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) :
 		tex2D(Bloom3, texcoord) +
 		tex2D(Bloom4, texcoord) +
 		tex2D(Bloom5, texcoord) +
-		tex2D(Bloom6, texcoord);
-	MergedBloom /= 7;
+		tex2D(Bloom6, texcoord) +
+		tex2D(Bloom7, texcoord);
+	MergedBloom /= 8;
 #endif
 
 	return MergedBloom;
@@ -360,6 +546,11 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 {
 	float4 finalcolor = tex2D(ReShade::BackBuffer, texcoord);
 	float4 bloom = tex2D(BloomCombined, texcoord);
+
+	#if DIRT_TEXTURE
+	float4 dirt = tex2D(SamplerDirtTexture, texcoord);
+	bloom = lerp(bloom, bloom + max((bloom * (dirt.r * (UI_DIRT_BRIGHTNESS * 10))), bloom), 1.0 - UI_DIRT_THRESHOLD);
+	#endif
 
 	// There can be a ONE MORE blurring step here, but at this point, it's pretty destructive
 	//
@@ -374,8 +565,6 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 	if (inColorSpace == 2)
 		{
 			bloom.rgb = fixNAN(bloom.rgb);
-			//bloom.rgb = DisplayMapColor(bloom.rgb, luminance, HDR_MAX_NITS);
-			//bloom.rgb = BT709_2_BT2020(bloom.rgb);
 			bloom.rgb = LinearToPQ(bloom.rgb);
 		}
 
@@ -399,9 +588,116 @@ float4 BlendBloomPS(float4 pixel : SV_POSITION, float2 texcoord : TEXCOORD0) : S
 		{
 			finalcolor = clamp(finalcolor, 0.0, 1.0);
 		}
-	return finalcolor;
 
+	return finalcolor;
 }
+
+#if DIRT_TEXTURE
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Dirt Texture Generation
+// Ported from the following shadertoy example:
+// https://www.shadertoy.com/view/7sXBWl#
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////
+float3 cyclicNoise(float3 p, float amp, float warp, float rot_angle, int octaves)
+{
+	float3 sum = 0.0;
+	float3x3 rotationMatrix = orthBasis(float3(rot_angle, -rot_angle, 0.2));
+
+	for (int i = 0; i < octaves; i++) {
+		p = mul(p, (rotationMatrix * 2));
+		p += sin(p.zxy * warp);
+		sum += sin(cross(cos(p), sin(p.yzx))) * amp;
+		amp *= 0.5;
+		warp *= 1.3;
+	}
+
+	return sum;
+}
+
+float3 getNoise(float2 uv, float amp, float warp, float rot_angle, int octaves, float power)
+{
+	float3 na = cyclicNoise(float3(uv + 20.0, 5.0), amp, warp, rot_angle, octaves);
+	float3 n = cyclicNoise(float3(uv * 10.0 + na.xy * 4.0, cyclicNoise(float3(uv, 1.0), amp, warp, rot_angle, octaves).x * 4.0), amp, warp, rot_angle, octaves);
+	float3 nb = cyclicNoise(float3(uv * 2.0 - n.xy * 1.0, cyclicNoise(float3(n.xy, n.z), amp, warp, rot_angle, octaves).x * -0.2 - 10.0), amp, warp, rot_angle, octaves);
+	float3 nc = cyclicNoise(float3(uv * 22.0 - n.xy * 1.0 + nb.xz * 1.0, n.y * 1.0 + nb.x - n.x), amp, warp, rot_angle, octaves);
+	float3 nd = cyclicNoise(float3(n.xy * 2.0 + nc.xz * 0.6, nc.y + 5.0), amp, warp, rot_angle, octaves);
+	float3 ne = cyclicNoise(float3(nd.xy * 2.0 + uv.xy, nd.x * 1.0 + 441.0), amp, warp, rot_angle, octaves);
+	n *= nb * 7.0 * dot(nc, float3(0.2 - nd.x, 1.0 - nd.y, 0.1)) * nd * ne * 3.0;
+	n = dot(n, float3(0.23, 1.0, 0.5)) * float3(1.0, 1.0, 1.0);
+	n = max(n, 0.0);
+	n = n / (1.0 + n);
+	n = pow(n, float3(power, power, power)) * 55.0;
+	return n;
+}
+
+float3 NoiseTextureGenerationPS(float4 pixel : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
+{
+	float3 noise = 0.0;
+	noise += getNoise(texcoord * UI_DIRT_UVSCALE, UI_DIRT_AMPLITUDE, UI_DIRT_WARP, UI_DIRT_SEED, UI_DIRT_OCTAVES, UI_DIRT_POWER);
+	return min(noise, UI_DIRT_CLAMP);
+}
+
+float4 DirtTextureGenerationPS(float4 pixel : SV_Position, float2 texcoord : TEXCOORD) : SV_Target {
+	float2 uv = texcoord * float2(1.0, 0.8);
+	float4 col = 0.0;
+	float iters = 150.0;
+	float radius = 0.01;
+
+	for (float i = 0.0; i < iters; i++) {
+		float3 r = hash33(float3(texcoord * 445.0 + 1150.0, i));
+		r.x = i / iters;
+		float3 c = float3(r.z * 0.75, 0.4, 0.35);
+		float2 offset = float2(sin(r.x * TAU), cos(r.x * TAU)) * sqrt(r.y) * radius;
+		float2 newUV = uv + offset * GetAspectRatio();
+		col += min(tex2D(SamplerNoiseTexture, newUV).xyz, UI_DIRT_CLAMP) / iters * c * 5.0;
+	}
+	col += tex2D(SamplerNoiseTexture, uv * 0.985).xyz * UI_DIRT_SCRATCHES;
+
+	return float4(col);
+}
+
+float4 BlendDirtTexturesPS(float4 pixel : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
+{
+	float4 DirtTexture = tex2D(SamplerDirtTexture, texcoord);
+	DirtTexture += CircularBlur(SamplerDirtTexture, texcoord, 2.0, 24, 1) /2;
+	float4 color = tex2D(ReShade::BackBuffer, texcoord);
+	color.xyz = lerp(color.xyz, DirtTexture.rrr, saturate(UI_DIRT_SHOW));
+	return float4(color.xyz, 1.0);
+}
+
+// Drit Texture Generation technique
+technique HDRDirtTextureGeneration
+<
+enabled = true;
+hidden = 1;
+#if DIRT_TEXTURE_TWEAKING == 0
+timeout = 1;
+#endif
+>
+{
+	pass NoiseTextureGeneration
+	{
+		VertexShader = PostProcessVS;
+		PixelShader = NoiseTextureGenerationPS;
+		RenderTarget = NoiseTexture;
+	}
+
+	pass DirtTextureGeneration
+	{
+		VertexShader = PostProcessVS;
+		PixelShader = DirtTextureGenerationPS;
+		RenderTarget = DirtTexture;
+	}
+
+	pass BlendDirtTextures
+	{
+		VertexShader = PostProcessVS;
+		PixelShader = BlendDirtTexturesPS;
+	}
+}
+#endif
 
 // Main technique
 technique HDRBloom <
@@ -435,6 +731,7 @@ ui_label = "HDRBloom";>
 	ADD_BLUR_PASSES(4, 8, 9)
 	ADD_BLUR_PASSES(5, 10, 11)
 	ADD_BLUR_PASSES(6, 12, 13)
+	ADD_BLUR_PASSES(7, 14, 15)
 
 	pass CombineBloom
 	{
