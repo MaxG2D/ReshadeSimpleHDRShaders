@@ -326,10 +326,10 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 	if (UI_BLUR_CURVE == 1)
 	{
 		// Blur Loop - Bezier
-		for (float s = 0; s < BLUR_SAMPLES; s++)
+		for (float s = 0.0; s <= 1.0; s += 1.0 / BLUR_SAMPLES)
 		{
 			float2 SampleCoord = BezierCurveCubic(p0, p1, p2, p3, s);
-			Sampled = tex2D(ReShade::BackBuffer, texcoord + SampleDist + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE * 2));
+			Sampled = tex2D(ReShade::BackBuffer, SampleCoord + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE * 2));
 
 			if (UI_BLUR_BLUE_NOISE_DEBUG)
 			{
@@ -338,6 +338,7 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 					Sampled += float3(1, 0, 0);
 				}
 			}
+
 			// HDR10 BT.2020 PQ
 			[branch]
 			if (inColorSpace == 2)
@@ -361,6 +362,14 @@ float4 BlurPS(float4 p : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 		for (int s = 0; s < BLUR_SAMPLES; s++)
 		{
 			Sampled = tex2D(ReShade::BackBuffer, texcoord + SampleDist * (s - HalfSampleSwitchInv) + (NoiseOffset * UI_BLUR_BLUE_NOISE));
+
+			if (UI_BLUR_BLUE_NOISE_DEBUG)
+			{
+				if (abs(SampleDistVector) > UI_BLUR_BLUE_THRESHOLD)
+				{
+					Sampled += float3(1, 0, 0);
+				}
+			}
 
 			// HDR10 BT.2020 PQ
 			[branch]
