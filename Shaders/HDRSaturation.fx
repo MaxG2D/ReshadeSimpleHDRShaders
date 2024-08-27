@@ -50,7 +50,7 @@ uniform float UI_SATURATION_AMOUNT <
 	ui_tooltip = "Degree of saturation adjustment, 0 = neutral";
 	ui_step = 1;
 	ui_type = "slider";
-> = 60.0;
+> = 75.0;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION <
 	ui_category = "Saturation";
@@ -76,7 +76,7 @@ uniform float UI_SATURATION_LIMIT <
 	ui_tooltip = "Switch between global or highlight only saturation";
 	ui_step = 0.001;
 	ui_type = "slider";
-> = 0.99;
+> = 0.995;
 
 uniform float UI_SATURATION_LUMA_LIMIT <
 	ui_category = "Saturation - Advanced";
@@ -85,7 +85,7 @@ uniform float UI_SATURATION_LUMA_LIMIT <
 	ui_tooltip = "Avoid clipping out highlight details";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.90;
+> = 0.95;
 
 uniform float UI_SATURATION_COLORS_LIMIT <
 	ui_category = "Saturation - Advanced";
@@ -94,7 +94,7 @@ uniform float UI_SATURATION_COLORS_LIMIT <
 	ui_tooltip = "Avoid clipping out color details.";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.70;
+> = 0.60;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT <
 	ui_category = "Saturation - Advanced";
@@ -126,7 +126,9 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 
 	const float3 ChromaComponents = PreProcessedColor - OKlabLuminance;
 	const float Chroma = length(ChromaComponents);
-	const float ChromaLimit = UI_SATURATION_COLORS_LIMIT * sqrt(sqrt(sqrt(Chroma)));
+	const float ChromaSoft = sqrt(sqrt(sqrt(Chroma)));
+	const float ChromaMix = smoothLerp(Chroma,ChromaSoft,0.5);
+	const float ChromaLimit = UI_SATURATION_COLORS_LIMIT * ChromaSoft;
 
 	float BaseSaturationRatio = 1.0 + UI_SATURATION_AMOUNT;
 	float SaturationClippingFactor = 1.0 - saturate(OKlabLuminanceSoft) * (UI_SATURATION_LUMA_LIMIT);
@@ -184,7 +186,7 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 		ProcessedColor = ExpandGamut
 		(
 			ProcessedColor,
-			(UI_SATURATION_GAMUT_EXPANSION / 5) * saturate(smoothstep(1, 1.0 - OKlabLuminanceSoft, UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT))
+			(UI_SATURATION_GAMUT_EXPANSION / 5) * saturate(smoothstep(1, 1.0 - ChromaMix, UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT))
 		);
 		ProcessedColor = GamutMapping(ProcessedColor);
 	}
