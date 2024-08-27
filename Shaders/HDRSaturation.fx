@@ -94,7 +94,7 @@ uniform float UI_SATURATION_COLORS_LIMIT <
 	ui_tooltip = "Avoid clipping out color details.";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.50;
+> = 0.70;
 
 uniform float UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT <
 	ui_category = "Saturation - Advanced";
@@ -103,7 +103,7 @@ uniform float UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT <
 	ui_tooltip = "How much Gamut Expansion is controlled by image luminance";
 	ui_step = 0.01;
 	ui_type = "slider";
-> = 0.85;
+> = 0.90;
 
 float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOORD) : SV_Target
 {
@@ -184,7 +184,7 @@ float3 SaturationAdjustment(float4 vpos : SV_Position, float2 texcoord : TEXCOOR
 		ProcessedColor = ExpandGamut
 		(
 			ProcessedColor,
-			(UI_SATURATION_GAMUT_EXPANSION / 5) * saturate(smoothstep(1, 1.0 - Chroma, UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT))
+			(UI_SATURATION_GAMUT_EXPANSION / 5) * saturate(smoothstep(1, 1.0 - OKlabLuminanceSoft, UI_SATURATION_GAMUT_EXPANSION_CLIPPING_LIMIT))
 		);
 		ProcessedColor = GamutMapping(ProcessedColor);
 	}
