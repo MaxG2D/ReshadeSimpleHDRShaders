@@ -790,7 +790,7 @@ float GetLinearizedDepth(sampler depthSampler, float2 texcoord)
 	// Apply depth transformations based on shader settings
 	#if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
 		static const float C = 0.01;
-		depth = (exp(depth * LOG(C + 1.0)) - 1.0) / C;
+		depth = (exp(depth * log(C + 1.0)) - 1.0) / C;
 	#endif
 	#if RESHADE_DEPTH_INPUT_IS_REVERSED
 		depth = 1.0 - depth;
